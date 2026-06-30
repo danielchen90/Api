@@ -52,5 +52,7 @@ export { UserCampus } from "./UserCampus.js";
 export { OrdinationType } from "./OrdinationType.js";
 export { PersonOrdination } from "./PersonOrdination.js";
 export { PersonPhotoCrop } from "./PersonPhotoCrop.js";
+export { LicenseTemplate } from "./LicenseTemplate.js";
+export { LicenseTemplateVersion } from "./LicenseTemplateVersion.js";
 
 export * from "./LoginModels.js";

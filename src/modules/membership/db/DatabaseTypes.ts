@@ -2,7 +2,7 @@ import type {
   AccessLog, Answer, ApiKey, AssociatedGroup, AuditLog, Campus, Church, ClientError, Domain, Form,
   FormSubmission, Group, GroupJoinRequest, GroupMember, GroupMemberHistory, Household, List, ListMember, MemberPermission,
   OAuthClient, OAuthCode, OAuthDeviceCode, OAuthRelaySession, OAuthToken,
-  OrdinationType, PersonOrdination, PersonPhotoCrop,
+  OrdinationType, PersonOrdination, PersonPhotoCrop, LicenseTemplate, LicenseTemplateVersion,
   Question, Role, RoleMember, RolePermission, Setting, User, UserCampus, UserChurch,
   VisibilityPreference, Webhook, WebhookDelivery
 } from "../models/index.js";
@@ -88,6 +88,14 @@ export interface MembershipDatabase {
   // PHO-04 normalized license-crop transform (one per person+purpose). Crop
   // fields are decimal(7,5) in MySQL; the repo coerces them to numbers on read.
   personPhotoCrops: PersonPhotoCrop;
+  // License card templates (TPL-03, TPL-04). The DB-generated read-only
+  // defaultFlag/activeFlag columns are omitted from the LicenseTemplate model
+  // (the app never writes them) and cast away on selectAll() if needed; isDefault/
+  // active/removed are bit(1) coerced to booleans by the repo.
+  licenseTemplates: LicenseTemplate;
+  // Immutable per-save snapshots (TPL-03 audit history), keyed
+  // UNIQUE(churchId, templateId, versionNumber).
+  licenseTemplateVersions: LicenseTemplateVersion;
   people: PeopleTable;
   questions: Question & { removed?: boolean };
   roles: Role;
