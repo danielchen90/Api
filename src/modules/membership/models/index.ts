@@ -47,4 +47,6 @@ export { WebhookDelivery } from "./WebhookDelivery.js";
 
 export { ApiKey } from "./ApiKey.js";
 
+export { UserCampus } from "./UserCampus.js";
+
 export * from "./LoginModels.js";
