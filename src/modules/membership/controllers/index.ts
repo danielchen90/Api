@@ -36,3 +36,4 @@ export { ServerHealthController } from "./ServerHealthController.js";
 
 export { UserCampusController } from "./UserCampusController.js";
 export { OrdinationTypeController } from "./OrdinationTypeController.js";
+export { PersonOrdinationController } from "./PersonOrdinationController.js";
