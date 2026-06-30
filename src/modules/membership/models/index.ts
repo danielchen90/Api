@@ -49,4 +49,7 @@ export { ApiKey } from "./ApiKey.js";
 
 export { UserCampus } from "./UserCampus.js";
 
+export { OrdinationType } from "./OrdinationType.js";
+export { PersonOrdination } from "./PersonOrdination.js";
+
 export * from "./LoginModels.js";

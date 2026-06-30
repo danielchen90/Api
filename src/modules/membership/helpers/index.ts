@@ -9,6 +9,7 @@ export type IPermission = { contentType: string; action: string };
 
 // Module-specific helpers
 export * from "./campusRoles.js";
+export * from "./ordinationTypes.js";
 export * from "./applyCampusScope.js";
 export { CampusScopeHelper } from "./CampusScopeHelper.js";
 export { CaddyHelper } from "./CaddyHelper.js";

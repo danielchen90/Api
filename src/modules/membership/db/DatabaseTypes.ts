@@ -2,6 +2,7 @@ import type {
   AccessLog, Answer, ApiKey, AssociatedGroup, AuditLog, Campus, Church, ClientError, Domain, Form,
   FormSubmission, Group, GroupJoinRequest, GroupMember, GroupMemberHistory, Household, List, ListMember, MemberPermission,
   OAuthClient, OAuthCode, OAuthDeviceCode, OAuthRelaySession, OAuthToken,
+  OrdinationType, PersonOrdination,
   Question, Role, RoleMember, RolePermission, Setting, User, UserCampus, UserChurch,
   VisibilityPreference, Webhook, WebhookDelivery
 } from "../models/index.js";
@@ -80,6 +81,10 @@ export interface MembershipDatabase {
   oAuthDeviceCodes: OAuthDeviceCode;
   oAuthRelaySessions: OAuthRelaySession;
   oAuthTokens: OAuthToken;
+  ordinationTypes: OrdinationType;
+  // DB-generated read-only `activeFlag` column is omitted from PersonOrdination
+  // (the model never writes it); repos cast it away on selectAll() if needed.
+  personOrdinations: PersonOrdination;
   people: PeopleTable;
   questions: Question & { removed?: boolean };
   roles: Role;
