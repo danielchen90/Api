@@ -41,6 +41,7 @@ export { UserCampusRepo } from "./UserCampusRepo.js";
 export { OrdinationTypeRepo } from "./OrdinationTypeRepo.js";
 export { PersonOrdinationRepo } from "./PersonOrdinationRepo.js";
 export { PersonPhotoCropRepo } from "./PersonPhotoCropRepo.js";
+export { LicenseTemplateRepo } from "./LicenseTemplateRepo.js";
 
 export { WebhookRepo } from "./WebhookRepo.js";
 export { WebhookDeliveryRepo } from "./WebhookDeliveryRepo.js";

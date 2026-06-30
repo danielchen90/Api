@@ -28,7 +28,8 @@ import {
   UserCampusRepo,
   OrdinationTypeRepo,
   PersonOrdinationRepo,
-  PersonPhotoCropRepo
+  PersonPhotoCropRepo,
+  LicenseTemplateRepo
 } from "./index.js";
 import { UserRepo, ChurchRepo, RoleRepo, RoleMemberRepo, RolePermissionRepo, UserChurchRepo, AccessLogRepo, AuditLogRepo, CampusRepo } from "./index.js";
 
@@ -78,6 +79,7 @@ export class Repos {
   public ordinationType: OrdinationTypeRepo;
   public personOrdination: PersonOrdinationRepo;
   public personPhotoCrop: PersonPhotoCropRepo;
+  public licenseTemplate: LicenseTemplateRepo;
 
   public static getCurrent = () => new Repos();
 
@@ -127,5 +129,6 @@ export class Repos {
     this.ordinationType = new OrdinationTypeRepo();
     this.personOrdination = new PersonOrdinationRepo();
     this.personPhotoCrop = new PersonPhotoCropRepo();
+    this.licenseTemplate = new LicenseTemplateRepo();
   }
 }
