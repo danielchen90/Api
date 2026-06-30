@@ -35,3 +35,4 @@ export { GdprController } from "./GdprController.js";
 export { ServerHealthController } from "./ServerHealthController.js";
 
 export { UserCampusController } from "./UserCampusController.js";
+export { OrdinationTypeController } from "./OrdinationTypeController.js";
