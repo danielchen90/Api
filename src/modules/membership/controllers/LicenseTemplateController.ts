@@ -1,5 +1,6 @@
 import { controller, httpGet, httpPost, requestParam } from "inversify-express-utils";
 import express from "express";
+import { FileStorageHelper, UniqueIdHelper } from "@churchapps/apihelper";
 import { MembershipBaseController } from "./MembershipBaseController.js";
 import { CAMPUS_WRITE_PERMISSION, CAMPUS_ORGWIDE_MARKER } from "../helpers/index.js";
 import { LicenseTemplate } from "../models/index.js";
@@ -45,6 +46,47 @@ export class LicenseTemplateController extends MembershipBaseController {
     const msg = (err?.sqlMessage || err?.message || "") as string;
     if (msg.includes("uq_licenseTemplates_default")) return "duplicate_default";
     return "duplicate_active_type";
+  }
+
+  /**
+   * Store any data-URL images embedded in layoutJson out into FileStorage and replace them with
+   * stored refs, mirroring PersonController.savePhoto. Runs BEFORE persistence so the v1 snapshot
+   * 05-01 freezes on create contains REFS ONLY, never base64 (RESEARCH Pitfall 8).
+   *
+   * Slots handled: the named `background` slot and every `image`-type element (logo). `photo`-type
+   * placeholders carry NO src (the region is filled in Phase 4/6) and are skipped. Already-stored
+   * keys (not starting with "data:image/") pass through untouched, so a re-save is idempotent.
+   *
+   * The caller pre-assigns a stable templateId (item.id) so the key path is fixed for a brand-new
+   * template; layoutJson is parsed (it may arrive as a string or an object), mutated in place, then
+   * re-stringified back onto item.layoutJson.
+   */
+  private async storeLayoutImages(churchId: string, templateId: string, item: LicenseTemplate): Promise<void> {
+    if (!item.layoutJson) return;
+    const layout: any = typeof item.layoutJson === "string" ? JSON.parse(item.layoutJson) : item.layoutJson;
+
+    const storeSlot = async (src: string, slotId: string): Promise<string> => {
+      const key = "/" + churchId + "/membership/licenseTemplates/" + templateId + "/" + slotId + ".png";
+      const base64 = src.split(",")[1];
+      await FileStorageHelper.store(key, "image/png", Buffer.from(base64, "base64"));
+      return key + "?dt=" + Date.now(); // cache-bust
+    };
+
+    // Background slot.
+    if (typeof layout?.background?.src === "string" && layout.background.src.startsWith("data:image/")) {
+      layout.background.src = await storeSlot(layout.background.src, "background");
+    }
+
+    // Image elements (logos). photo-placeholders have no src and pass through.
+    const elements: any[] = Array.isArray(layout?.elements) ? layout.elements : [];
+    for (const el of elements) {
+      if (el?.type === "image" && typeof el.src === "string" && el.src.startsWith("data:image/")) {
+        el.src = await storeSlot(el.src, el.id);
+      }
+    }
+
+    // Persist ONLY refs back into layoutJson — never base64.
+    item.layoutJson = JSON.stringify(layout);
   }
 
   // ── Reads: auth-only, church-scoped (any settings user may VIEW; not write-gated) ──
@@ -95,7 +137,15 @@ export class LicenseTemplateController extends MembershipBaseController {
       item.updatedBy = au.id;
       if (isNew) item.createdBy = au.id;
 
-      // 5. Persist by the EXPLICIT isNew flag (NEVER item.id, which may now be present).
+      // 5. IMAGE STORAGE — store data-URL images out of layoutJson into FileStorage and replace
+      //    them with refs BEFORE persistence, so the v1 snapshot 05-01 freezes on create holds refs
+      //    only (RESEARCH Pitfall 8). Pre-assign a STABLE id for the storage key path when new
+      //    (05-01 create() respects this id and never overwrites it); routing was ALREADY decided by
+      //    isNew above, so the now-present id does NOT change create-vs-update.
+      if (isNew) item.id = UniqueIdHelper.shortId();
+      await this.storeLayoutImages(au.churchId, item.id, item);
+
+      // 6. Persist by the EXPLICIT isNew flag (NEVER item.id, which is now present even for new rows).
       try {
         if (isNew) {
           // create path — 05-01 create() respects the pre-assigned id and writes the v1 snapshot.
