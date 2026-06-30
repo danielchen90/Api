@@ -2,7 +2,7 @@ import type {
   AccessLog, Answer, ApiKey, AssociatedGroup, AuditLog, Campus, Church, ClientError, Domain, Form,
   FormSubmission, Group, GroupJoinRequest, GroupMember, GroupMemberHistory, Household, List, ListMember, MemberPermission,
   OAuthClient, OAuthCode, OAuthDeviceCode, OAuthRelaySession, OAuthToken,
-  OrdinationType, PersonOrdination,
+  OrdinationType, PersonOrdination, PersonPhotoCrop,
   Question, Role, RoleMember, RolePermission, Setting, User, UserCampus, UserChurch,
   VisibilityPreference, Webhook, WebhookDelivery
 } from "../models/index.js";
@@ -85,6 +85,9 @@ export interface MembershipDatabase {
   // DB-generated read-only `activeFlag` column is omitted from PersonOrdination
   // (the model never writes it); repos cast it away on selectAll() if needed.
   personOrdinations: PersonOrdination;
+  // PHO-04 normalized license-crop transform (one per person+purpose). Crop
+  // fields are decimal(7,5) in MySQL; the repo coerces them to numbers on read.
+  personPhotoCrops: PersonPhotoCrop;
   people: PeopleTable;
   questions: Question & { removed?: boolean };
   roles: Role;
