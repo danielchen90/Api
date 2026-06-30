@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import express from "express";
+import path from "path";
 import { Container } from "inversify";
 import { InversifyExpressServer } from "inversify-express-utils";
 import { Environment } from "./shared/helpers/Environment.js";
@@ -130,6 +131,16 @@ export const createApp = async () => {
         tempFileDir: "/tmp/"
       })
     );
+
+    // Serve locally-stored content (FILE_STORE=disk) from the same path the
+    // file store writes to (FileStorageHelper.rootPath = path.resolve("./content")).
+    // In cloud prod, FILE_STORE=S3 serves these via a CDN (Environment.contentRoot);
+    // for self-hosted/Railway disk mode, the monolith must serve them itself or
+    // every photo/file URL 404s after the upload preview. Keys are unguessable
+    // ({churchId}/{module}/...), matching the public-CDN model.
+    if (Environment.fileStore !== "S3") {
+      app.use("/content", express.static(path.resolve("./content")));
+    }
 
     // Module routing logger (for debugging)
     app.use(moduleRoutingLogger);
