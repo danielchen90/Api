@@ -53,7 +53,7 @@ async function main() {
   if (!ordB) {
     ordB = await repos.personOrdination.save({
       churchId, personId: minister.id, ordinationTypeId: typeId, campusId: campusB.id,
-      status: "active", credentialNumber: "ISO-B-001", createdBy: "provision-script"
+      status: "active", credentialNumber: "ISO-B-001", createdBy: "system"
     } as any);
   }
 
