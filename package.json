@@ -34,6 +34,7 @@
     "migrate:down": "tsx tools/migrate.ts --action=down --module=all",
     "migrate:status": "tsx tools/migrate.ts --action=status --module=all",
     "migrate:create": "tsx tools/migrate-create.ts",
+    "seed:ordination-types": "tsx tools/seed-ordination-types.ts",
     "scheduled-tasks": "tsx tools/run-scheduled-tasks.ts",
     "timer:30min": "tsx tools/run-timer-30min.ts",
     "timer:midnight": "tsx tools/run-timer-midnight.ts"
