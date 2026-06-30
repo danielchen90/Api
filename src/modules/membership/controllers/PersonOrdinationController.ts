@@ -102,4 +102,67 @@ export class PersonOrdinationController extends MembershipBaseController {
       return saved;
     });
   }
+
+  // ── Status change / reissue / revoke (ORD-05/07/08) ──
+  //
+  // ONE version-guarded, transition-validated, audited endpoint covers the whole lifecycle
+  // (revoke and reissue are just status targets — no separate routes). Guard order is FIXED:
+  // write gate -> load row SCOPED -> assertWritableCampus(row.campusId) -> transition 422 ->
+  // version 409 / duplicate-active 409 -> audit -> return the bumped row.
+  @httpPost("/:id/status")
+  public async changeStatus(
+    @requestParam("id") id: string,
+    req: express.Request<{ id: string }, {}, { status: string; version: number; credentialNumber?: string; grantedDate?: Date; expirationDate?: Date; notes?: string }>,
+    res: express.Response
+  ): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+
+      // 1. WRITE-CAPABILITY GATE first (read-only roles 401 even with the org-wide marker).
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      // 2. Load the row SCOPED — out-of-scope or missing is a 404-hide (never reveal cross-campus rows).
+      const row = await this.repos.personOrdination.load(au.churchId, id, scope);
+      if (!row?.id) return this.json({}, 404);
+
+      // 3. SCOPE GATE on the LOADED row's campusId — never trust a body campusId for an existing record.
+      if (!assertWritableCampus(scope, row.campusId)) return this.json({}, 401);
+
+      // 4. TRANSITION VALIDATION (ORD-05): unknown target or disallowed edge → 422.
+      const body = req.body;
+      if (!OrdinationStatusHelper.isValidStatus(body.status)) return this.json({ error: "invalid_status" }, 422);
+      if (!OrdinationStatusHelper.isValidTransition(row.status as any, body.status)) return this.json({ error: "invalid_transition" }, 422);
+
+      // 5. VERSION-GUARDED UPDATE (ORD-07). Missing fields fall back to the loaded row's values.
+      //    A transition TO active can trip the ORD-04 unique index → distinct 409 duplicate_active.
+      let n: bigint;
+      try {
+        n = await this.repos.personOrdination.updateWithVersion({
+          id,
+          churchId: au.churchId,
+          status: body.status,
+          credentialNumber: body.credentialNumber ?? row.credentialNumber,
+          grantedDate: body.grantedDate ?? row.grantedDate,
+          expirationDate: body.expirationDate ?? row.expirationDate,
+          notes: body.notes ?? row.notes,
+          updatedBy: au.id
+        }, body.version);
+      } catch (err: any) {
+        if (this.isDuplicateActive(err)) return this.json({ error: "duplicate_active" }, 409);
+        throw err;
+      }
+      if (n === 0n) return this.json({ error: "version_conflict" }, 409); // stale version / row gone (Pitfall 2)
+
+      // 6. EXPLICIT AUDIT (ORD-08): revoke vs reissue distinguished by the target status.
+      const action = body.status === "revoked" ? "credential_revoked" : "credential_reissued";
+      await AuditLogHelper.log(
+        this.repos, au.churchId, au.id, "ordination", action,
+        "personOrdination", id, { from: row.status, to: body.status },
+        AuditLogHelper.getClientIp(req)
+      );
+
+      // 7. Return the reloaded row (carries the bumped version for the client's next edit).
+      return this.repos.personOrdination.load(au.churchId, id, scope);
+    });
+  }
 }
