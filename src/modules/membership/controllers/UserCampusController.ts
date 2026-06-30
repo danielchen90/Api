@@ -1,4 +1,4 @@
-import { controller, httpPost, httpDelete, requestParam } from "inversify-express-utils";
+import { controller, httpGet, httpPost, httpDelete, requestParam } from "inversify-express-utils";
 import express from "express";
 import { MembershipBaseController } from "./MembershipBaseController.js";
 import { CampusScopeHelper, assertWritableCampus, CAMPUS_WRITE_PERMISSION } from "../helpers/index.js";
@@ -19,6 +19,26 @@ import { CampusScopeHelper, assertWritableCampus, CAMPUS_WRITE_PERMISSION } from
  */
 @controller("/userCampuses")
 export class UserCampusController extends MembershipBaseController {
+
+  @httpGet("/user/:userId")
+  public async listForUser(@requestParam("userId") userId: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      // Read-only: intentionally NOT gated on CAMPUS_WRITE_PERMISSION. Org-wide read-only roles
+      // (Reporter, mode:"all") may read every assignment; scoped roles see only their own campuses.
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const rows = await this.repos.userCampus.loadForUser(au.churchId, userId);
+
+      // PERM-04 read filtering — the result MUST never include out-of-scope campuses.
+      switch (scope.mode) {
+        case "all":
+          return rows;
+        case "deny":
+          return [];
+        case "scoped":
+          return rows.filter((r) => scope.campusIds.includes(r.campusId));
+      }
+    });
+  }
 
   @httpPost("/")
   public async assign(req: express.Request<{}, {}, { userId: string; campusId: string }>, res: express.Response): Promise<any> {

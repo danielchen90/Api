@@ -33,3 +33,5 @@ export { ApiKeyController } from "./ApiKeyController.js";
 export { AuditLogController } from "./AuditLogController.js";
 export { GdprController } from "./GdprController.js";
 export { ServerHealthController } from "./ServerHealthController.js";
+
+export { UserCampusController } from "./UserCampusController.js";
