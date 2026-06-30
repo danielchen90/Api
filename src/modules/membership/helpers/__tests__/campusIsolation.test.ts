@@ -78,6 +78,30 @@ const getByIdLoad = (scope: CampusScope, id?: string): any => {
   return q.execute()[0] ?? {}; // ?? {} → out-of-scope id is indistinguishable from "not found"
 };
 
+// ── Phase-2 ordination fixtures (personOrdinations rows on campus A / campus B). ─────────────────
+// These mirror the PersonOrdinationRepo read shape: churchId filter FIRST, then applyCampusScope
+// layered on top (load is a 404-hide via `?? {}`; loadAll/loadForPerson silent-filter). Driving the
+// SAME real primitive over an in-memory fixture keeps the Phase-2 registrations DB-free.
+const ORDINATION_ROWS = [
+  { id: "ord-a1", campusId: A, personId: "p1", ordinationTypeId: "t-pastor", status: "active" },
+  { id: "ord-a2", campusId: A, personId: "p2", ordinationTypeId: "t-elder", status: "active" },
+  { id: "ord-b1", campusId: B, personId: "p3", ordinationTypeId: "t-pastor", status: "active" }
+];
+
+// personOrdination LIST — repo loadAll: churchId then applyCampusScope, returns the matched rows.
+const personOrdinationList = (scope: CampusScope): any[] => {
+  let q = new InMemoryQuery(ORDINATION_ROWS); // (real repo filters churchId first; constant here)
+  q = applyCampusScope(q, scope);
+  return q.execute();
+};
+
+// personOrdination GET-BY-ID — repo load: out-of-scope id 404-hides (`?? {}`).
+const personOrdinationGetById = (scope: CampusScope, id?: string): any => {
+  let q = new InMemoryQuery(ORDINATION_ROWS).where("id", "=", id);
+  q = applyCampusScope(q, scope);
+  return q.execute()[0] ?? {};
+};
+
 // Fake AuthenticatedUser whose checkAccess answers per-permission (marker vs Edit capability).
 const makeAu = (opts: { marker: boolean; edit?: boolean }) =>
   ({
@@ -175,6 +199,39 @@ describe("campusIsolation (PERM-07 phase exit gate)", () => {
       expectWriteIsolation({ mode: "deny" }, B);
       expect(assertWritableCampus({ mode: "all" }, A)).toBe(true);
       expect(assertWritableCampus({ mode: "all" }, "")).toBe(false); // rejects empty/falsy target
+    });
+  });
+
+  // ── PHASE 2 REGISTRATIONS (ORD-02/03/04 reads + writes) ──────────────────────────────────────
+  // The support header (campusIsolationSupport.ts, lines 19-27) enumerates the endpoint types each
+  // later phase must register here with ONE expectCampusIsolation/expectWriteIsolation line. Phase 2
+  // adds the three personOrdination endpoint types — proving a scoped Campus Admin 404-hides/filters
+  // foreign-campus ordinations and cannot issue/change a credential targeting a foreign campus.
+  describe("Phase 2: personOrdination read isolation (ORD reads through the reusable gate)", () => {
+    it("get-by-id: a foreign-campus ordination 404-hides under A-scope; org-wide sees both; deny none", async () => {
+      await expectCampusIsolation(personOrdinationGetById, {
+        kind: "get-by-id",
+        inScopeCampusId: A,
+        outOfScopeCampusId: B,
+        inScopeId: "ord-a1",
+        outOfScopeId: "ord-b1"
+      });
+    });
+
+    it("list: A-scope returns only A ordinations (no B leakage); org-wide both; deny empty", async () => {
+      await expectCampusIsolation(personOrdinationList, {
+        kind: "list",
+        inScopeCampusId: A,
+        outOfScopeCampusId: B
+      });
+    });
+  });
+
+  describe("Phase 2: personOrdination write isolation (issue / changeStatus target validation)", () => {
+    it("a scoped Campus Admin cannot issue/change an ordination targeting foreign campus B, but can on own A", () => {
+      // issue: assertWritableCampus(scope, body.campusId); changeStatus: on the LOADED row's campusId.
+      // Either way a foreign-campus target is rejected and the own campus stays writable.
+      expectWriteIsolation({ mode: "scoped", campusIds: [A] }, B);
     });
   });
 
