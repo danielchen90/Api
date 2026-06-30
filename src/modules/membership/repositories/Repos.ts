@@ -27,7 +27,8 @@ import {
   ApiKeyRepo,
   UserCampusRepo,
   OrdinationTypeRepo,
-  PersonOrdinationRepo
+  PersonOrdinationRepo,
+  PersonPhotoCropRepo
 } from "./index.js";
 import { UserRepo, ChurchRepo, RoleRepo, RoleMemberRepo, RolePermissionRepo, UserChurchRepo, AccessLogRepo, AuditLogRepo, CampusRepo } from "./index.js";
 
@@ -76,6 +77,7 @@ export class Repos {
   public userCampus: UserCampusRepo;
   public ordinationType: OrdinationTypeRepo;
   public personOrdination: PersonOrdinationRepo;
+  public personPhotoCrop: PersonPhotoCropRepo;
 
   public static getCurrent = () => new Repos();
 
@@ -124,5 +126,6 @@ export class Repos {
     this.userCampus = new UserCampusRepo();
     this.ordinationType = new OrdinationTypeRepo();
     this.personOrdination = new PersonOrdinationRepo();
+    this.personPhotoCrop = new PersonPhotoCropRepo();
   }
 }
