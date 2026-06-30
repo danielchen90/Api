@@ -37,5 +37,7 @@ export { OAuthRelaySessionRepo } from "./OAuthRelaySessionRepo.js";
 
 export { ApiKeyRepo } from "./ApiKeyRepo.js";
 
+export { UserCampusRepo } from "./UserCampusRepo.js";
+
 export { WebhookRepo } from "./WebhookRepo.js";
 export { WebhookDeliveryRepo } from "./WebhookDeliveryRepo.js";

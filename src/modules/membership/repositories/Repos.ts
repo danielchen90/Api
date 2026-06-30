@@ -24,7 +24,8 @@ import {
   OAuthRelaySessionRepo,
   WebhookRepo,
   WebhookDeliveryRepo,
-  ApiKeyRepo
+  ApiKeyRepo,
+  UserCampusRepo
 } from "./index.js";
 import { UserRepo, ChurchRepo, RoleRepo, RoleMemberRepo, RolePermissionRepo, UserChurchRepo, AccessLogRepo, AuditLogRepo, CampusRepo } from "./index.js";
 
@@ -70,6 +71,8 @@ export class Repos {
 
   public apiKey: ApiKeyRepo;
 
+  public userCampus: UserCampusRepo;
+
   public static getCurrent = () => new Repos();
 
   constructor() {
@@ -113,5 +116,7 @@ export class Repos {
     this.webhookDelivery = new WebhookDeliveryRepo();
 
     this.apiKey = new ApiKeyRepo();
+
+    this.userCampus = new UserCampusRepo();
   }
 }
