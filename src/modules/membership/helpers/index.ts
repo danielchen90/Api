@@ -8,6 +8,7 @@ export { Environment, Permissions, permissionsList, type ApiName, type DisplaySe
 export type IPermission = { contentType: string; action: string };
 
 // Module-specific helpers
+export * from "./campusRoles.js";
 export { CaddyHelper } from "./CaddyHelper.js";
 export { ChurchHelper } from "./ChurchHelper.js";
 export { GeoHelper } from "./GeoHelper.js";
