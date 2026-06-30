@@ -13,7 +13,15 @@ import { ApiName, Actions } from "../../../shared/helpers/index.js";
  */
 
 /**
- * Permission shape mirroring `RolePermission` ({ apiName, contentType, action }).
+ * Permission shape mirroring the standard `Permissions` constants ({ contentType, action }).
+ *
+ * CRITICAL — NO `apiName` (see CAMPUS_*_PERMISSION below): `AuthenticatedUser.checkAccess` builds its
+ * lookup key as `apiName + "_" + contentType + "__" + action` ONLY when `apiName` is present, else
+ * `contentType + "__" + action`. The church JWT stores membership permissions UNPREFIXED
+ * (`People__Edit`, `Campus__Admin` — see `buildPermStrings`, which prefixes only when a stored
+ * permission carries `apiName`). A constant with `apiName` would build `MembershipApi_People__Edit`
+ * and never match — so these MUST be unprefixed, exactly like `Permissions.people.edit`. `apiName`
+ * is kept OPTIONAL only so the union/imports stay available; it is deliberately left unset.
  *
  * `contentType` is intentionally typed `string` rather than the `ContentType` union: the org-wide
  * marker's contentType ("Campus") MUST NOT be a member of the union / `permissionsList` (Pitfall 1:
@@ -21,23 +29,26 @@ import { ApiName, Actions } from "../../../shared/helpers/index.js";
  * at login expansion, which would silently destroy the marker).
  */
 export interface CampusRolePermission {
-  apiName: ApiName;
+  apiName?: ApiName;
   contentType: string;
   action: Actions;
 }
 
 /**
- * Org-wide marker permission (perm string `MembershipApi_Campus__Admin`).
+ * Org-wide marker permission (JWT perm string `Campus__Admin` — UNPREFIXED, see CampusRolePermission).
  *
  * The SINGLE source of truth consumed by Plan 02's resolver to return `mode:"all"` for org-wide roles.
+ * `Campus__Admin` is also the standard Campus-Admin permission a Domain Admin holds after
+ * `replaceDomainAdminPermissions` (which injects the UNPREFIXED standard set), so org-wide owners
+ * resolve to `mode:"all"` as intended.
  *
  * CRITICAL (Pitfall 1): this contentType/action MUST NOT appear in `permissionsList`, so
  * `UserHelper.replaceDomainAdminPermissions()` never strips or auto-injects it.
  */
-export const CAMPUS_ORGWIDE_MARKER = { apiName: "MembershipApi", contentType: "Campus", action: "Admin" } as const satisfies CampusRolePermission;
+export const CAMPUS_ORGWIDE_MARKER = { contentType: "Campus", action: "Admin" } as const satisfies CampusRolePermission;
 
 /**
- * Edit-bearing write-capability permission (perm string `MembershipApi_People__Edit`).
+ * Edit-bearing write-capability permission (JWT perm string `People__Edit` — UNPREFIXED).
  *
  * The SINGLE source of truth consumed by Plan 04's `UserCampusController` write gate via
  * `au.checkAccess(CAMPUS_WRITE_PERMISSION)`. It is granted ONLY to Leadership Admin + Campus Admin
@@ -46,16 +57,16 @@ export const CAMPUS_ORGWIDE_MARKER = { apiName: "MembershipApi", contentType: "C
  * `Permissions.people.edit`, an existing entry in the manage set / `permissionsList`, so seeding it
  * requires no changes to `permissionsList`.
  */
-export const CAMPUS_WRITE_PERMISSION = { apiName: "MembershipApi", contentType: "People", action: "Edit" } as const satisfies CampusRolePermission;
+export const CAMPUS_WRITE_PERMISSION = { contentType: "People", action: "Edit" } as const satisfies CampusRolePermission;
 
-// Read permissions (granted to every campus role).
-const PEOPLE_VIEW = { apiName: "MembershipApi", contentType: "People", action: "View" } as const satisfies CampusRolePermission;
-const GROUPS_VIEW = { apiName: "MembershipApi", contentType: "Groups", action: "View" } as const satisfies CampusRolePermission;
+// Read permissions (granted to every campus role). UNPREFIXED to match the JWT (see CampusRolePermission).
+const PEOPLE_VIEW = { contentType: "People", action: "View" } as const satisfies CampusRolePermission;
+const GROUPS_VIEW = { contentType: "Groups", action: "View" } as const satisfies CampusRolePermission;
 
 // Additional write/manage permissions (granted only to the two writer roles, alongside CAMPUS_WRITE_PERMISSION).
-const HOUSEHOLDS_EDIT = { apiName: "MembershipApi", contentType: "Households", action: "Edit" } as const satisfies CampusRolePermission;
-const GROUPS_EDIT = { apiName: "MembershipApi", contentType: "Groups", action: "Edit" } as const satisfies CampusRolePermission;
-const ROLES_VIEW = { apiName: "MembershipApi", contentType: "Roles", action: "View" } as const satisfies CampusRolePermission;
+const HOUSEHOLDS_EDIT = { contentType: "Households", action: "Edit" } as const satisfies CampusRolePermission;
+const GROUPS_EDIT = { contentType: "Groups", action: "Edit" } as const satisfies CampusRolePermission;
+const ROLES_VIEW = { contentType: "Roles", action: "View" } as const satisfies CampusRolePermission;
 
 /**
  * The full manage set (mirrors the commented Domain Admins set in RoleHelper). The People-Edit entry
