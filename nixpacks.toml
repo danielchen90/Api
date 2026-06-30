@@ -1,0 +1,10 @@
+# Provides a SYSTEM Chromium for puppeteer. The bundled Chromium is never downloaded
+# during the container build because .yarnrc.yml sets enableScripts:false (puppeteer's
+# postinstall is skipped). PuppeteerHealthController resolves `which chromium` at runtime.
+# "..." spreads Nixpacks' auto-detected packages (node, yarn via corepack, etc.).
+[phases.setup]
+nixPkgs = ["...", "chromium", "fontconfig"]
+
+[variables]
+# Belt-and-suspenders: bundled download is already disabled by enableScripts:false.
+PUPPETEER_SKIP_DOWNLOAD = "true"

@@ -248,6 +248,7 @@ async function loadModuleBindings(container: Container) {
     // The @controller decorators automatically register with the container
     const moduleImports: Array<{ name: string; import: Promise<any> }> = [
       { name: "Shared", import: import("./shared/controllers/HealthController.js") },
+      { name: "PuppeteerHealth", import: import("./shared/controllers/PuppeteerHealthController.js") },
       { name: "Membership", import: import("./modules/membership/controllers/index.js") },
       { name: "Attendance", import: import("./modules/attendance/controllers/index.js") },
       { name: "Content", import: import("./modules/content/controllers/index.js") },
