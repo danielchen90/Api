@@ -50,7 +50,7 @@ export class DomainRepo {
   public async loadPairs() {
     return getDb().selectFrom("domains as d")
       .innerJoin("churches as c", "c.id", "d.churchId")
-      .select(["d.domainName as host", sql`CONCAT(c.subDomain, '.b1.church:443')`.as("dial")])
+      .select(["d.domainName as host", sql`CONCAT(c.subDomain, '.huro.church:443')`.as("dial")])
       .where("d.domainName", "not like", "%www.%")
       .execute();
   }

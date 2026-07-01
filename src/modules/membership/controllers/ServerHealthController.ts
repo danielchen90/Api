@@ -43,7 +43,7 @@ export class ServerHealthController extends MembershipBaseController {
             { key: "jwtSecret", label: "JWT Secret", configured: has(Environment.jwtSecret) },
             { key: "encryptionKey", label: "Encryption Key", configured: has(Environment.encryptionKey) },
             { key: "supportEmail", label: "Support Email", configured: has(Environment.supportEmail) },
-            { key: "b1AdminRoot", label: "B1 Admin URL", configured: has(Environment.b1AdminRoot) }
+            { key: "b1AdminRoot", label: "Church Admin URL", configured: has(Environment.b1AdminRoot) }
           ]
         },
         {

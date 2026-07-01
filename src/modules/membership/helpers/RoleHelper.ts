@@ -111,7 +111,7 @@ export class RoleHelper {
   }
 
   private async createB1Role() {
-    const roleId: string = await this.createRole("B1 Admins", [
+    const roleId: string = await this.createRole("Church Admins", [
       { apiName: "AttendanceApi", contentType: "Attendance", action: "Checkin" },
       { apiName: "AttendanceApi", contentType: "Attendance", action: "Edit" },
       { apiName: "AttendanceApi", contentType: "Services", action: "Edit" },

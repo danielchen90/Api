@@ -69,7 +69,7 @@ export class AutomationHelper {
             timeSent: new Date(),
             isNew: true,
             message: `Reminder: attendance hasn't been recorded for ${group.name} (${dateStr})`,
-            link: subDomain ? `https://${subDomain}.b1.church/mobile/groups/${group.id}` : undefined
+            link: subDomain ? `https://${subDomain}.huro.church/mobile/groups/${group.id}` : undefined
           });
         }
       } catch (e) {

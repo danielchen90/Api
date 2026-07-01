@@ -106,7 +106,7 @@ BEGIN
     -- ========================================
     INSERT INTO deliveryLogs (id, churchId, personId, contentType, contentId, deliveryMethod, success, errorMessage, deliveryAddress, attemptTime) VALUES
     ('DLG00000001', 'CHU00000001', 'PER00000082', 'notification', 'NTF00000001', 'push', b'1', NULL, 'fcm_token_demo_001', DATE_SUB(NOW(), INTERVAL 12 DAY)),
-    ('DLG00000002', 'CHU00000001', 'PER00000082', 'notification', 'NTF00000002', 'email', b'1', NULL, 'demo@b1.church', DATE_SUB(NOW(), INTERVAL 7 DAY)),
+    ('DLG00000002', 'CHU00000001', 'PER00000082', 'notification', 'NTF00000002', 'email', b'1', NULL, 'demo@huro.church', DATE_SUB(NOW(), INTERVAL 7 DAY)),
     ('DLG00000003', 'CHU00000001', 'PER00000001', 'notification', 'NTF00000004', 'push', b'1', NULL, 'fcm_token_demo_002', DATE_SUB(NOW(), INTERVAL 2 DAY)),
     ('DLG00000004', 'CHU00000001', 'PER00000036', 'notification', 'NTF00000005', 'push', b'1', NULL, NULL, DATE_SUB(NOW(), INTERVAL 10 DAY)),
     ('DLG00000005', 'CHU00000001', 'PER00000073', 'notification', 'NTF00000008', 'email', b'0', 'Mailbox full', 'george.thompson@email.com', DATE_SUB(NOW(), INTERVAL 2 DAY));

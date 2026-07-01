@@ -72,7 +72,7 @@ export class ListRefreshHelper {
     const subject = `List "${list.name}" membership changed`;
     const contents = `<h2>${list.name}</h2><p>The nightly refresh updated this list: ${addedCount} added, ${removedCount} removed.</p>`;
     try {
-      await EmailHelper.sendTemplatedEmail(Environment.supportEmail, creator.email, "B1.church", Environment.b1AdminRoot ?? "", subject, contents, "ChurchEmailTemplate.html");
+      await EmailHelper.sendTemplatedEmail(Environment.supportEmail, creator.email, "Huro", Environment.b1AdminRoot ?? "", subject, contents, "ChurchEmailTemplate.html");
     } catch (e) {
       console.error(`[ListRefreshHelper] Notification email failed for list ${list.id}:`, e);
     }

@@ -53,7 +53,7 @@
           "formatter": "dollars"
         },
         {
-          "header": "B1 Admin",
+          "header": "Church Admin",
           "value": "chumsChurches",
           "formatter": "number"
         },

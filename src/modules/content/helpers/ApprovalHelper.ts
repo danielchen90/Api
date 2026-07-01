@@ -62,7 +62,7 @@ export class ApprovalHelper {
         for (const personId of approverIds) {
           const person = await getMembershipModuleGateway().loadPerson(digest.churchId, personId);
           if (!person?.email) continue;
-          await EmailHelper.sendTemplatedEmail(Environment.supportEmail, person.email, "B1.church", Environment.b1AdminRoot ?? "", this.getDigestSubject(digest), this.getDigestBody(digest), "ChurchEmailTemplate.html");
+          await EmailHelper.sendTemplatedEmail(Environment.supportEmail, person.email, "Huro", Environment.b1AdminRoot ?? "", this.getDigestSubject(digest), this.getDigestBody(digest), "ChurchEmailTemplate.html");
           emails++;
         }
         await repos.eventBooking.markNotified(digest.bookingIds);

@@ -67,7 +67,7 @@ export class ServingReminderHelper {
     const church = await membership.loadChurch(plan.churchId);
     const subDomain = church?.subDomain || "app";
     const churchName = church?.name || "B1";
-    const planUrl = `https://${subDomain}.b1.church/my/plans?id=${plan.id}`;
+    const planUrl = `https://${subDomain}.huro.church/my/plans?id=${plan.id}`;
     const dateStr = new Date(plan.serviceDate).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
     const byPerson = new Map<string, { positions: Set<string>; unconfirmedId: string | null }>();

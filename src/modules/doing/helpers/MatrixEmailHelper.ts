@@ -74,7 +74,7 @@ export class MatrixEmailHelper {
     const church = await membership.loadChurch(churchId);
     const subDomain = church?.subDomain || "app";
     const churchName = church?.name || "B1";
-    const scheduleUrl = `https://${subDomain}.b1.church/my/plans`;
+    const scheduleUrl = `https://${subDomain}.huro.church/my/plans`;
 
     const names = new Map<string, string>();
     for (const p of (await membership.loadPeople(churchId, recipients.map((r) => r.personId))) as any[]) names.set(p.id, p.displayName);

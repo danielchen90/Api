@@ -9,7 +9,7 @@
   "mailSystem": "SES",
   "s3Bucket": "churchapps-content",
   "supportEmail": "support@churchapps.org",
-  "b1AdminRoot": "https://admin.b1.church",
+  "b1AdminRoot": "https://admin.huro.church",
   "messagingApi": "https://api.churchapps.org/messaging",
   "aiProvider": "openai",
   "storeApi": "https://api.mutualministry.com"

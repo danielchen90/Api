@@ -185,7 +185,7 @@ export class Environment extends EnvironmentBase {
     this.jwtExpiration = "2 days";
     this.emailOnRegistration = process.env.EMAIL_ON_REGISTRATION === "true" || config.emailOnRegistration === true;
     this.supportEmail = process.env.SUPPORT_EMAIL || config.supportEmail || "support@churchapps.org";
-    this.b1AdminRoot = process.env.B1ADMIN_ROOT || config.b1AdminRoot || "https://admin.staging.b1.church";
+    this.b1AdminRoot = process.env.B1ADMIN_ROOT || config.b1AdminRoot || "https://admin.staging.huro.church";
     this.mailSystem = process.env.MAIL_SYSTEM ?? config.mailSystem ?? "";
     EnvironmentBase.mailSystem = this.mailSystem;
 
