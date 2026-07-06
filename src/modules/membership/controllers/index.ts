@@ -39,3 +39,4 @@ export { OrdinationTypeController } from "./OrdinationTypeController.js";
 export { PersonOrdinationController } from "./PersonOrdinationController.js";
 export { PersonPhotoCropController } from "./PersonPhotoCropController.js";
 export { LicenseTemplateController } from "./LicenseTemplateController.js";
+export { LicenseCardController } from "./LicenseCardController.js";
