@@ -63,6 +63,7 @@ export interface ReportFilterSpec {
   groupBy2: GroupOption;         // secondary/nested grouping ("none" = single-level)
   sortBy: "lastName" | "firstName";
   sortDir: "asc" | "desc";
+  paymentStatus?: "all" | "paid" | "unpaid" | "exempt"; // per-credential fee state; "all" = no filter
 }
 
 // The per-credential atomic row the filter/group operate over. Exposes EXACTLY the shared
@@ -79,6 +80,8 @@ export interface ReportRow {
   credentialNumber: string;
   grantedDate: string;    // "YYYY-MM-DD" or "" when absent
   expirationDate: string; // "YYYY-MM-DD" or "" when absent
+  paid: boolean;
+  exempt: boolean;
 }
 
 // Structural (type-only) inputs — kept minimal so no model class is imported.
@@ -90,6 +93,8 @@ export interface OrdinationLike {
   credentialNumber?: string | null;
   grantedDate?: Date | string | null;
   expirationDate?: Date | string | null;
+  paid?: boolean | null;
+  exempt?: boolean | null;
 }
 export interface NameLabel { firstName: string; lastName: string; displayName: string; }
 export interface TypeLabel { name: string; sortOrder: number; }
@@ -108,6 +113,8 @@ export interface GroupedModelRow {
   credentialNumber: string;
   grantedDate: string;
   expirationDate: string;
+  paid: boolean;
+  exempt: boolean;
 }
 
 export interface GroupNode {
@@ -183,7 +190,9 @@ export function buildReportRows(
       displayName: nm.displayName || "",
       credentialNumber: o.credentialNumber || "",
       grantedDate: isoDateOnly(o.grantedDate),
-      expirationDate: isoDateOnly(o.expirationDate)
+      expirationDate: isoDateOnly(o.expirationDate),
+      paid: !!o.paid,
+      exempt: !!o.exempt
     };
   });
 }
@@ -204,7 +213,8 @@ export function normalizeSpec(body: any): ReportFilterSpec {
     groupBy1: asOption(b.groupBy1),
     groupBy2: asOption(b.groupBy2),
     sortBy: b.sortBy === "firstName" ? "firstName" : "lastName",
-    sortDir: b.sortDir === "desc" ? "desc" : "asc"
+    sortDir: b.sortDir === "desc" ? "desc" : "asc",
+    paymentStatus: b.paymentStatus === "paid" || b.paymentStatus === "unpaid" || b.paymentStatus === "exempt" ? b.paymentStatus : "all"
   };
 }
 
@@ -229,6 +239,11 @@ export function filterRows(rows: ReportRow[], spec: ReportFilterSpec): ReportRow
     if (campusSet && !campusSet.has(r.campusId)) return false;
     if (typeSet && !typeSet.has(r.ordinationTypeId)) return false;
     if (statusSet && !statusSet.has(r.status)) return false;
+
+    const pay = spec.paymentStatus || "all";
+    if (pay === "paid" && !r.paid) return false;
+    if (pay === "unpaid" && (r.paid || r.exempt)) return false;
+    if (pay === "exempt" && !r.exempt) return false;
 
     if (expStart && expEnd) {
       const exp = parseLocalDay(r.expirationDate); // null expirationDate excluded
@@ -311,7 +326,9 @@ const toModelRow = (
   status: STATUS_LABELS[r.status] || r.status,
   credentialNumber: r.credentialNumber,
   grantedDate: r.grantedDate,
-  expirationDate: r.expirationDate
+  expirationDate: r.expirationDate,
+  paid: r.paid,
+  exempt: r.exempt
 });
 
 // Recursively build one grouping level. `dims` is the full active-dim list; `dimIndex` the

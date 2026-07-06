@@ -37,8 +37,8 @@ const esc = (s: string): string =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-// The 7 report columns (RPT-04).
-const COLUMNS = ["Name", "Campus", "Ordination(s)", "Status", "Credential #", "Granted", "Expires"];
+// The report columns (RPT-04).
+const COLUMNS = ["Name", "Campus", "Ordination(s)", "Status", "Credential #", "Granted", "Expires", "Paid", "Exempt"];
 
 const COL_COUNT = COLUMNS.length;
 
@@ -50,6 +50,8 @@ const dataRowHtml = (row: {
   credentialNumber: string;
   grantedDate: string;
   expirationDate: string;
+  paid: boolean;
+  exempt: boolean;
 }): string =>
   "<tr class=\"data-row\">" +
   `<td>${esc(row.name)}</td>` +
@@ -59,6 +61,8 @@ const dataRowHtml = (row: {
   `<td>${esc(row.credentialNumber)}</td>` +
   `<td>${esc(row.grantedDate)}</td>` +
   `<td>${esc(row.expirationDate)}</td>` +
+  `<td>${row.paid ? "Yes" : "No"}</td>` +
+  `<td>${row.exempt ? "Yes" : "No"}</td>` +
   "</tr>";
 
 // A group-header row spanning all columns, carrying the label + distinct-person count. `level`
