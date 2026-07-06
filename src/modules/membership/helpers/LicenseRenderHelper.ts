@@ -437,6 +437,16 @@ export const buildTestCardHtml = (calibration: Calibration = NO_CALIBRATION): st
 let _browser: Browser | null = null;
 let _launching: Promise<Browser> | null = null;
 
+// Puppeteer is ESM-only. In production (NodeNext ESM) a plain `import("puppeteer")` is fine,
+// but ts-jest's CommonJS transform downlevels a literal `import()` to `require()`, which
+// chokes on puppeteer's ESM `export` syntax — so the PRT-06 test would silently skip forever.
+// Routing through an indirect dynamic import the transpiler can't rewrite keeps it a NATIVE
+// import() in BOTH runtimes (native import() loads ESM even from a CommonJS caller), so the
+// dimension guard actually executes Chromium under Jest/CI.
+const importDynamic = new Function("specifier", "return import(specifier)") as (
+  specifier: string
+) => Promise<any>;
+
 // Resolve the system Chromium exactly like PuppeteerHealthController (the Phase-0-proven
 // Railway launch): prefer PUPPETEER_EXECUTABLE_PATH, else `which chromium…`. Empty string
 // → let Puppeteer fall back to its bundled binary (used by local dev / CI when set).
@@ -458,7 +468,7 @@ export const getSharedBrowser = async (): Promise<Browser> => {
   if (_browser?.connected) return _browser;
   if (_launching) return _launching;
   _launching = (async () => {
-    const puppeteer = (await import("puppeteer")).default;
+    const puppeteer = (await importDynamic("puppeteer")).default;
     const executablePath = resolveExecutablePath();
     const browser = await puppeteer.launch({
       headless: true,
