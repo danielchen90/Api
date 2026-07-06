@@ -43,6 +43,7 @@ export { PersonOrdinationRepo } from "./PersonOrdinationRepo.js";
 export { PersonPhotoCropRepo } from "./PersonPhotoCropRepo.js";
 export { LicenseTemplateRepo } from "./LicenseTemplateRepo.js";
 export { LicenseCardRepo } from "./LicenseCardRepo.js";
+export { PrintBatchRepo } from "./PrintBatchRepo.js";
 
 export { WebhookRepo } from "./WebhookRepo.js";
 export { WebhookDeliveryRepo } from "./WebhookDeliveryRepo.js";

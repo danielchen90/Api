@@ -30,7 +30,8 @@ import {
   PersonOrdinationRepo,
   PersonPhotoCropRepo,
   LicenseTemplateRepo,
-  LicenseCardRepo
+  LicenseCardRepo,
+  PrintBatchRepo
 } from "./index.js";
 import { UserRepo, ChurchRepo, RoleRepo, RoleMemberRepo, RolePermissionRepo, UserChurchRepo, AccessLogRepo, AuditLogRepo, CampusRepo } from "./index.js";
 
@@ -82,6 +83,7 @@ export class Repos {
   public personPhotoCrop: PersonPhotoCropRepo;
   public licenseTemplate: LicenseTemplateRepo;
   public licenseCard: LicenseCardRepo;
+  public printBatch: PrintBatchRepo;
 
   public static getCurrent = () => new Repos();
 
@@ -133,5 +135,6 @@ export class Repos {
     this.personPhotoCrop = new PersonPhotoCropRepo();
     this.licenseTemplate = new LicenseTemplateRepo();
     this.licenseCard = new LicenseCardRepo();
+    this.printBatch = new PrintBatchRepo();
   }
 }
