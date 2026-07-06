@@ -134,11 +134,12 @@ describe("ordination integrity — ORD-05 status lifecycle (OrdinationStatusHelp
     expect(ORDINATION_STATUSES).toEqual(["pending", "active", "suspended", "revoked", "emeritus"]);
   });
 
-  it("DEFAULT_ISSUE_STATUS is 'pending' (issue-then-activate yields a clean two-step audit trail)", () => {
-    expect(OrdinationStatusHelper.DEFAULT_ISSUE_STATUS).toBe("pending");
-    // and the default is itself a valid status that can transition into 'active'.
+  it("DEFAULT_ISSUE_STATUS is 'active' (a new credential is active on issue — operational requirement)", () => {
+    expect(OrdinationStatusHelper.DEFAULT_ISSUE_STATUS).toBe("active");
+    // and the default is itself a valid status.
     expect(OrdinationStatusHelper.isValidStatus(OrdinationStatusHelper.DEFAULT_ISSUE_STATUS)).toBe(true);
-    expect(OrdinationStatusHelper.isValidTransition(OrdinationStatusHelper.DEFAULT_ISSUE_STATUS, "active")).toBe(true);
+    // being born active, it can still transition onward (e.g. active → suspended).
+    expect(OrdinationStatusHelper.isValidTransition(OrdinationStatusHelper.DEFAULT_ISSUE_STATUS, "suspended")).toBe(true);
   });
 });
 

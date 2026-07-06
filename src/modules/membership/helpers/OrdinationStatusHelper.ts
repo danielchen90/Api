@@ -36,11 +36,15 @@ const ALLOWED_TRANSITIONS: Record<OrdinationStatus, OrdinationStatus[]> = {
 
 export class OrdinationStatusHelper {
   /**
-   * Issue default (RESEARCH-recommended): a new credential starts `pending`, then is
-   * explicitly activated. Issuing-then-activating yields a clean two-step audit trail
-   * (credential_issued → credential_reissued) rather than springing into `active`.
+   * Issue default: a new credential is `active` immediately on issue (operational
+   * requirement — staff issue a credential when the minister is ordained, not as a
+   * draft). The `credential_issued` audit row still attributes who/when. Because a
+   * new row is born active, the ORD-04 partial-unique index is enforced from issue:
+   * a second active credential of the same type/campus for the same person is a 409
+   * `duplicate_active` (the issue dialog surfaces this). `pending` remains a valid
+   * explicit status a caller may still send for a draft workflow.
    */
-  public static readonly DEFAULT_ISSUE_STATUS: OrdinationStatus = "pending";
+  public static readonly DEFAULT_ISSUE_STATUS: OrdinationStatus = "active";
 
   /** Type guard — is the raw string one of the five known statuses? */
   public static isValidStatus(s: string): s is OrdinationStatus {
