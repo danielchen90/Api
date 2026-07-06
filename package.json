@@ -14,7 +14,7 @@
     "lint": "eslint --fix src/",
     "lint:check": "eslint .",
     "tsc": "tsc",
-    "copy-assets": "copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" dist/",
+    "copy-assets": "copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" \"src/**/*.woff2\" dist/",
     "build-ignore-errors": "yarn clean && (yarn exec tsc || true) && yarn copy-assets",
     "build": "yarn clean && yarn exec tsc --noEmitOnError false && yarn copy-assets && yarn build:playground",
     "build:playground": "cd src/playground && yarn exec tsc && copyfiles index.html dist/",
