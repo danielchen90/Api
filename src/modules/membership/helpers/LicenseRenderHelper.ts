@@ -347,8 +347,83 @@ export const buildHtml = (
   return htmlDocument(baseStyle(), cardStyleAttr(widthMm, heightMm, bleedMm, calibration), cardInner);
 };
 
+// CR80 trim geometry — the test card is built at TRIM (bleed 0) so its marks land on the
+// exact page edges the operator physically calibrates against.
+const TRIM_W = 85.6;
+const TRIM_H = 53.98;
+
+// A single absolutely-positioned black hairline div (mm coordinates).
+const bar = (leftMm: number, topMm: number, wMm: number, hMm: number): string =>
+  `<div style="position:absolute;left:${leftMm}mm;top:${topMm}mm;width:${wMm}mm;height:${hMm}mm;background:#000"></div>`;
+
+// L-shaped corner registration marks: two arms meeting at each of the 4 corners.
+const cornerMarks = (): string => {
+  const arm = 5; // mm
+  const thk = 0.3; // mm
+  const marks: string[] = [];
+  // top-left
+  marks.push(bar(0, 0, arm, thk), bar(0, 0, thk, arm));
+  // top-right
+  marks.push(bar(TRIM_W - arm, 0, arm, thk), bar(TRIM_W - thk, 0, thk, arm));
+  // bottom-left
+  marks.push(bar(0, TRIM_H - thk, arm, thk), bar(0, TRIM_H - arm, thk, arm));
+  // bottom-right
+  marks.push(bar(TRIM_W - arm, TRIM_H - thk, arm, thk), bar(TRIM_W - thk, TRIM_H - arm, thk, arm));
+  return marks.join("");
+};
+
+// Center crosshair: full-height + full-width hairlines through 50%/50%.
+const centerCrosshair = (): string => {
+  const thk = 0.2; // mm
+  return (
+    bar(TRIM_W / 2 - thk / 2, 0, thk, TRIM_H) + // vertical
+    bar(0, TRIM_H / 2 - thk / 2, TRIM_W, thk) // horizontal
+  );
+};
+
+// A small mm label near a tick (mono font so digits are legible at print size).
+const tickLabel = (leftMm: number, topMm: number, value: number): string =>
+  `<div style="position:absolute;left:${leftMm}mm;top:${topMm}mm;font-family:${FONT_CSS.mono};font-size:4pt;color:#000;line-height:1">${value}</div>`;
+
+// mm ruler ticks along all four edges: a tick every 1mm, longer every 5mm, labelled
+// every 10mm — drawn in the card's native mm space so the operator reads the physical
+// offset directly off the printed card.
+const rulerTicks = (): string => {
+  const thk = 0.15; // mm hairline
+  const minorLen = 1.2;
+  const majorLen = 2.4; // every 5mm
+  const labelLen = 3.2; // every 10mm
+  const parts: string[] = [];
+  // top + bottom edges: vertical ticks at each x mm
+  for (let x = 0; x <= Math.floor(TRIM_W); x++) {
+    const len = x % 10 === 0 ? labelLen : x % 5 === 0 ? majorLen : minorLen;
+    parts.push(bar(x, 0, thk, len)); // top edge
+    parts.push(bar(x, TRIM_H - len, thk, len)); // bottom edge
+    if (x % 10 === 0 && x > 0 && x < TRIM_W) parts.push(tickLabel(x + 0.3, len + 0.2, x));
+  }
+  // left + right edges: horizontal ticks at each y mm
+  for (let y = 0; y <= Math.floor(TRIM_H); y++) {
+    const len = y % 10 === 0 ? labelLen : y % 5 === 0 ? majorLen : minorLen;
+    parts.push(bar(0, y, len, thk)); // left edge
+    parts.push(bar(TRIM_W - len, y, len, thk)); // right edge
+    if (y % 10 === 0 && y > 0 && y < TRIM_H) parts.push(tickLabel(len + 0.2, y + 0.3, y));
+  }
+  return parts.join("");
+};
+
+// Build the per-workstation calibration test card (PRT-05). Same @page, same .card
+// calibration transform, and same page pipeline as buildHtml — so the operator
+// calibrates against the EXACT geometry real cards use. Content: corner registration
+// marks + center crosshair + mm ruler ticks. No licenseTemplate row is involved.
+export const buildTestCardHtml = (calibration: Calibration = NO_CALIBRATION): string => {
+  const cardInner = [cornerMarks(), centerCrosshair(), rulerTicks()].join("\n");
+  // bleed 0 → the card IS the trim page; the calibration transform is otherwise identical.
+  return htmlDocument(baseStyle(), cardStyleAttr(TRIM_W, TRIM_H, 0, calibration), cardInner);
+};
+
 export const LicenseRenderHelper = {
   buildHtml,
+  buildTestCardHtml,
   inlineImage,
   NO_CALIBRATION,
 };
