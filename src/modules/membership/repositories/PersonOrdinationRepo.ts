@@ -40,6 +40,8 @@ export class PersonOrdinationRepo {
       expirationDate: model.expirationDate,
       version: 1,
       notes: model.notes,
+      paid: model.paid ?? false,
+      exempt: model.exempt ?? false,
       createdAt: sql`NOW()` as any,
       createdBy: model.createdBy,
       removed: false
@@ -113,6 +115,25 @@ export class PersonOrdinationRepo {
     return res.numUpdatedRows;
   }
 
+  // ORD-07 version-guarded update of ONLY the paid/exempt flags. Kept separate
+  // from updateWithVersion so a payment edit never clobbers status/grant/expiry
+  // fields (and status/grant writes never clobber the payment flags). Bumps
+  // version so concurrent edits still 409.
+  public async updatePaymentFlags(model: { id: string; churchId: string; paid: boolean; exempt: boolean; updatedBy: string }, expectedVersion: number): Promise<bigint> {
+    const res = await getDb().updateTable("personOrdinations").set({
+      paid: model.paid,
+      exempt: model.exempt,
+      updatedAt: sql`NOW()` as any,
+      updatedBy: model.updatedBy,
+      version: sql`version + 1` as any
+    })
+      .where("id", "=", model.id)
+      .where("churchId", "=", model.churchId)
+      .where("version", "=", expectedVersion)
+      .executeTakeFirst();
+    return res.numUpdatedRows;
+  }
+
   // Status transitions (e.g. revoke) are just version-guarded updates with the
   // new status — every mutation bumps version. Returns numUpdatedRows (0n on
   // stale version → 409 upstream).
@@ -157,7 +178,9 @@ export class PersonOrdinationRepo {
       createdBy: row.createdBy,
       updatedAt: row.updatedAt,
       updatedBy: row.updatedBy,
-      removed: !!row.removed
+      removed: !!row.removed,
+      paid: !!row.paid,
+      exempt: !!row.exempt
     };
   }
 

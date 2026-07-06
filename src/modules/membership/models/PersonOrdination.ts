@@ -23,6 +23,8 @@ export class PersonOrdination {
   public expirationDate?: Date;
   public version?: number;
   public notes?: string;
+  public paid?: boolean;
+  public exempt?: boolean;
   public createdAt?: Date;
   public createdBy?: string;
   public updatedAt?: Date;
