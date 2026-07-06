@@ -79,6 +79,34 @@ const pickTemplate = (templates: any[], ordinationTypeId?: string | null) =>
   templates.find((t) => t.active && t.ordinationTypeId === ordinationTypeId) ??
   templates.find((t) => t.active && t.isDefault);
 
+// ── Bounded concurrency pool ───────────────────────────────────────────────────
+// Run `fn` over `items` with at most `limit` in flight at once (caps concurrent
+// renderPdf calls on the SHARED browser — no new dependency). Results are returned
+// in INPUT ORDER so the caller can merge pages deterministically & sequentially.
+export async function runWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) break;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  const size = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: size }, () => worker()));
+  return results;
+}
+
+// One render outcome: a rendered single-card PDF buffer, OR an error to skip-and-report.
+type RenderResult =
+  | { card: ResolvedCard; pdf: Buffer }
+  | { card: ResolvedCard; error: unknown };
+
 // ── The batch-render engine ───────────────────────────────────────────────────
 
 export class PrintBatchRenderHelper {
@@ -171,5 +199,91 @@ export class PrintBatchRenderHelper {
     }
 
     return { cards, skipped };
+  }
+
+  // Render the resolved cards into ONE multi-page CR80 PDF and archive it (Pattern 2).
+  // Called FIRE-AND-FORGET by the 07-04 controller (NOT awaited) — every failure path
+  // still routes the batch to a terminal status so a DB-backed poller never hangs.
+  //
+  //   RENDER (capped concurrency): render each card's stored template version on the shared
+  //     browser, retrying MAX_RETRIES times before giving up on that one card.
+  //   APPEND (SEQUENTIAL): merge each single-card PDF into ONE growing doc via pdf-lib
+  //     load→copyPages→addPage; the source doc goes out of scope each iteration so its buffer
+  //     is GC'd — we NEVER hold all N source buffers (this is what keeps memory bounded, PRT-02).
+  //   ARCHIVE + FINISH: store the assembled PDF and write the terminal ready/failed status.
+  public async renderBatch(
+    churchId: string,
+    batchId: string,
+    cards: ResolvedCard[],
+    _actorId: string
+  ): Promise<void> {
+    try {
+      const merged = await PDFDocument.create(); // the ONE growing document
+      const skipped: SkippedCard[] = [];
+      let rendered = 0;
+
+      // RENDER — capped concurrency on the shared Chromium, retry-twice-then-skip.
+      const results = await runWithConcurrency<ResolvedCard, RenderResult>(
+        cards,
+        RENDER_CONCURRENCY,
+        async (card) => {
+          for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+              // Render from the FROZEN template version snapshot (reproducibility).
+              const version = await this.repos.licenseTemplate.loadVersion(
+                churchId,
+                card.templateId,
+                card.templateVersion
+              );
+              if (!version?.layoutJson) throw new Error("template version snapshot missing");
+              const layout = JSON.parse(version.layoutJson) as LicenseTemplateLayout;
+              const html = LicenseRenderHelper.buildHtml(layout, card.data, card.calibration, card.assets);
+              const pdf = await LicenseRenderHelper.renderPdf(html);
+              return { card, pdf };
+            } catch (e) {
+              if (attempt === MAX_RETRIES) return { card, error: e };
+              await sleep(RETRY_DELAY_MS);
+            }
+          }
+          // Unreachable (the loop always returns), but satisfies the return type.
+          return { card, error: new Error("render exhausted") };
+        }
+      );
+
+      // APPEND — SEQUENTIAL incremental merge; each source buffer released per iteration.
+      for (const result of results) {
+        if (!("pdf" in result)) {
+          const reason =
+            result.error instanceof Error ? result.error.message : "render failed";
+          skipped.push({ personId: result.card.personId, reason });
+          continue;
+        }
+        const src = await PDFDocument.load(result.pdf);
+        const [page] = await merged.copyPages(src, [0]);
+        merged.addPage(page);
+        // `src` now goes out of scope → its buffer is GC'd (do NOT retain all sources).
+        if (result.card.cardId) {
+          await this.repos.licenseCard.updateStatus(churchId, result.card.cardId, "queued");
+        }
+        rendered++;
+        await this.repos.printBatch.updateProgress(churchId, batchId, rendered); // DB-backed
+      }
+
+      // ARCHIVE the assembled PDF (mirror Phase 6 archival; FileStorageHelper has store only).
+      const bytes = await merged.save();
+      const key = "/" + churchId + "/membership/printBatches/" + batchId + ".pdf";
+      await FileStorageHelper.store(key, "application/pdf", Buffer.from(bytes));
+
+      // FINISH — terminal status. All cards skipped ⇒ failed; otherwise ready.
+      await this.repos.printBatch.finish(churchId, batchId, {
+        status: skipped.length === cards.length ? "failed" : "ready",
+        pdfRef: key,
+        skippedJson: JSON.stringify(skipped)
+      });
+    } catch (e) {
+      // Any unexpected throw still routes the batch to a terminal failed status
+      // (the controller also .catch()es this fire-and-forget call).
+      await this.repos.printBatch.fail(churchId, batchId, e);
+    }
   }
 }
