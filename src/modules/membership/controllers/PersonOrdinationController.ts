@@ -165,4 +165,100 @@ export class PersonOrdinationController extends MembershipBaseController {
       return this.repos.personOrdination.load(au.churchId, id, scope);
     });
   }
+
+  // ── Payment flags (paid / exempt) — write-gated + scope-gated, version-guarded, audited ──
+  //
+  // Dedicated write path so a payment edit never clobbers status/grant/expiry (updatePaymentFlags
+  // touches ONLY paid/exempt + version). Same fixed guard order as changeStatus: write gate ->
+  // load SCOPED -> assertWritableCampus(row.campusId) -> version 409 -> audit -> reload.
+  @httpPost("/:id/payment")
+  public async updatePayment(
+    @requestParam("id") id: string,
+    req: express.Request<{ id: string }, {}, { paid?: boolean; exempt?: boolean; version: number }>,
+    res: express.Response
+  ): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+
+      // 1. WRITE-CAPABILITY GATE first (read-only roles 401 even with the org-wide marker).
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      // 2. Load the row SCOPED — out-of-scope or missing is a 404-hide.
+      const row = await this.repos.personOrdination.load(au.churchId, id, scope);
+      if (!row?.id) return this.json({}, 404);
+
+      // 3. SCOPE GATE on the LOADED row's campusId — never trust a body campusId for an existing record.
+      if (!assertWritableCampus(scope, row.campusId)) return this.json({}, 401);
+
+      // 4. Missing flags fall back to the loaded row's current values (partial update).
+      const body = req.body;
+      const paid = body.paid ?? row.paid ?? false;
+      const exempt = body.exempt ?? row.exempt ?? false;
+
+      // 5. VERSION-GUARDED UPDATE (ORD-07).
+      const n = await this.repos.personOrdination.updatePaymentFlags({ id, churchId: au.churchId, paid, exempt, updatedBy: au.id }, body.version);
+      if (n === 0n) return this.json({ error: "version_conflict" }, 409); // stale version / row gone (Pitfall 2)
+
+      // 6. EXPLICIT AUDIT (ORD-08).
+      await AuditLogHelper.log(
+        this.repos, au.churchId, au.id, "ordination", "credential_payment_updated",
+        "personOrdination", id, { paid, exempt }, AuditLogHelper.getClientIp(req)
+      );
+
+      // 7. Return the reloaded row (carries the bumped version for the client's next edit).
+      return this.repos.personOrdination.load(au.churchId, id, scope);
+    });
+  }
+
+  // ── Batch grant (issue-in-bulk) — write-gated + per-row scope-gated, per-row audited ──
+  //
+  // Two literal path segments ("batch"/"grant") so this route does NOT collide with "/:id/...".
+  // Each id is loaded SCOPED and campus-checked independently; non-fatal per-row outcomes are
+  // collected in `skipped` (not_found / forbidden / version_conflict / duplicate_active) so one
+  // bad id never aborts the batch. Each successful grant is a version-guarded active transition.
+  @httpPost("/batch/grant")
+  public async batchGrant(
+    req: express.Request<{}, {}, { ids: string[]; grantedDate: string; expirationDate: string }>,
+    res: express.Response
+  ): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+
+      // 1. WRITE-CAPABILITY GATE first (read-only roles 401 even with the org-wide marker).
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      // 2. Validate the batch envelope.
+      const body = req.body;
+      if (!Array.isArray(body.ids) || body.ids.length === 0 || !body.grantedDate || !body.expirationDate) {
+        return this.json({ error: "invalid_request" }, 422);
+      }
+
+      let granted = 0;
+      const skipped: { id: string; reason: string }[] = [];
+
+      for (const id of [...new Set(body.ids)]) {
+        // Load SCOPED — out-of-scope / missing id is a non-fatal skip (never reveal cross-campus rows).
+        const row = await this.repos.personOrdination.load(au.churchId, id, scope);
+        if (!row?.id) { skipped.push({ id, reason: "not_found" }); continue; }
+        if (!assertWritableCampus(scope, row.campusId)) { skipped.push({ id, reason: "forbidden" }); continue; }
+
+        try {
+          const n = await this.repos.personOrdination.updateWithVersion({
+            id: row.id, churchId: au.churchId, status: "active",
+            credentialNumber: row.credentialNumber,
+            grantedDate: body.grantedDate as any, expirationDate: body.expirationDate as any,
+            notes: row.notes, updatedBy: au.id
+          }, row.version);
+          if (n === 0n) { skipped.push({ id, reason: "version_conflict" }); continue; }
+          granted++;
+          await AuditLogHelper.log(this.repos, au.churchId, au.id, "ordination", "credential_granted", "personOrdination", id, { grantedDate: body.grantedDate, expirationDate: body.expirationDate }, AuditLogHelper.getClientIp(req));
+        } catch (err: any) {
+          if (this.isDuplicateActive(err)) { skipped.push({ id, reason: "duplicate_active" }); continue; }
+          throw err;
+        }
+      }
+
+      return { granted, skipped };
+    });
+  }
 }
