@@ -6,11 +6,16 @@
 // `@page { size: 85.6mm 53.98mm; margin: 0 }` + `preferCSSPageSize:true`, so the printed
 // card is byte-faithful to the editor preview (RESEARCH §Architecture Pattern 1).
 //
-// This module is Puppeteer-FREE: buildHtml/buildTestCardHtml are pure string builders.
+// The pure string builders (buildHtml/buildTestCardHtml) stay Puppeteer-FREE. renderPdf
+// (added in 06-03) is the ONE Puppeteer boundary: it drives a SHARED headless Chromium
+// (never a per-render cold launch — RESEARCH Pitfall 1) and calls page.pdf with the exact
+// CR80 options that make Chromium honor the @page verbatim.
 // The 06-04 controller does the DB/FileStorage fetching and passes bytes in via `assets`.
 
 import fs from "fs";
 import path from "path";
+import { execSync } from "child_process";
+import type { Browser } from "puppeteer";
 import { buildFontFaceCss } from "./renderFonts.js";
 import { resolveBinding } from "./renderBindings.js";
 
@@ -421,9 +426,107 @@ export const buildTestCardHtml = (calibration: Calibration = NO_CALIBRATION): st
   return htmlDocument(baseStyle(), cardStyleAttr(TRIM_W, TRIM_H, 0, calibration), cardInner);
 };
 
+// ---------------------------------------------------------------------------
+// Puppeteer boundary — shared Chromium + exact-CR80 page.pdf
+// ---------------------------------------------------------------------------
+
+// Module-singleton browser. Launching Chromium per render is the #1 render-pipeline
+// pitfall (RESEARCH Pitfall 1: seconds of cold-launch latency + fd/zombie leaks under
+// concurrency). We launch ONCE, keep the Browser, and only open/close a fresh PAGE per
+// render. `_launching` de-dupes concurrent first-render launches into one browser.
+let _browser: Browser | null = null;
+let _launching: Promise<Browser> | null = null;
+
+// Resolve the system Chromium exactly like PuppeteerHealthController (the Phase-0-proven
+// Railway launch): prefer PUPPETEER_EXECUTABLE_PATH, else `which chromium…`. Empty string
+// → let Puppeteer fall back to its bundled binary (used by local dev / CI when set).
+const resolveExecutablePath = (): string => {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) return process.env.PUPPETEER_EXECUTABLE_PATH;
+  try {
+    return execSync("which chromium || which chromium-browser || which google-chrome-stable || which google-chrome")
+      .toString()
+      .trim();
+  } catch {
+    return "";
+  }
+};
+
+// Get the shared Chromium, launching (once) or re-launching if it has disconnected/crashed.
+// Reproduces PuppeteerHealthController's launch args (--no-sandbox is REQUIRED in the
+// Railway/CI container; --disable-dev-shm-usage avoids /dev/shm exhaustion).
+export const getSharedBrowser = async (): Promise<Browser> => {
+  if (_browser?.connected) return _browser;
+  if (_launching) return _launching;
+  _launching = (async () => {
+    const puppeteer = (await import("puppeteer")).default;
+    const executablePath = resolveExecutablePath();
+    const browser = await puppeteer.launch({
+      headless: true,
+      executablePath: executablePath || undefined,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    });
+    _browser = browser;
+    _launching = null;
+    return browser;
+  })();
+  try {
+    return await _launching;
+  } catch (err) {
+    _launching = null;
+    throw err;
+  }
+};
+
+// Close the shared browser (test teardown / graceful shutdown). Safe to call when unset.
+export const closeSharedBrowser = async (): Promise<void> => {
+  const b = _browser;
+  _browser = null;
+  _launching = null;
+  if (b) {
+    try {
+      await b.close();
+    } catch {
+      /* already gone */
+    }
+  }
+};
+
+// Render a buildHtml/buildTestCardHtml string to an EXACT-CR80 PDF via the shared Chromium.
+// The page.pdf options are load-bearing and MUST NOT change:
+//   preferCSSPageSize:true — honor the @page 85.6mm×53.98mm VERBATIM. Default (false) makes
+//     Chromium scale the card onto Letter — the exact silent "scale-to-fit" PRT-06 guards.
+//   printBackground:true   — default false drops background photos/colors (blank cards).
+//   scale:1                — calibration scale lives in CSS (06-02 cardStyleAttr), NEVER here.
+//   margin all 0 + pageRanges:"1" — one exact-trim page, no printer margins.
+// Opens a fresh page per render and closes the PAGE (keeps the shared BROWSER alive).
+export const renderPdf = async (html: string): Promise<Buffer> => {
+  const browser = await getSharedBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setContent(html, { waitUntil: "load" });
+    // Wait for embedded @font-face faces to finish loading so text metrics are final
+    // before the PDF is snapshotted (otherwise the first render can capture fallback fonts).
+    await page.evaluateHandle("document.fonts.ready");
+    const pdf = await page.pdf({
+      preferCSSPageSize: true,
+      printBackground: true,
+      scale: 1,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      pageRanges: "1",
+      tagged: false,
+    });
+    return Buffer.from(pdf);
+  } finally {
+    await page.close();
+  }
+};
+
 export const LicenseRenderHelper = {
   buildHtml,
   buildTestCardHtml,
   inlineImage,
+  getSharedBrowser,
+  closeSharedBrowser,
+  renderPdf,
   NO_CALIBRATION,
 };
