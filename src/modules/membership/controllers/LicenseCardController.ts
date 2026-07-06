@@ -250,4 +250,81 @@ export class LicenseCardController extends MembershipBaseController {
       return this.repos.licenseCard.load(au.churchId, id);
     });
   }
+
+  // Reprint a SINGLE card (LOCKED: single card only — NO full-batch re-download). Re-renders
+  // EXACTLY ONE card via the Phase-6 path at the card's STORED templateVersion (byte-identical
+  // reproduction — renders against the FROZEN version snapshot, NOT the live template, so a
+  // subsequent template edit can never alter a reprint), archives a FRESH single-card blob,
+  // sets status "reissued", audits it, and returns the printable PDF bytes for the OS-print flow.
+  @httpPost("/:id/reprint")
+  public async reprint(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const card = await this.repos.licenseCard.load(au.churchId, id);
+      if (!card?.id) return this.json({}, 404);
+      if (!assertWritableCampus(scope, card.campusId)) return this.json({}, 401);
+
+      // 1. Load the FROZEN layout at the card's STORED version (reproducibility — never the live
+      //    template row; a version snapshot's layoutJson is immutable).
+      const version = await this.repos.licenseTemplate.loadVersion(au.churchId, card.templateId, card.templateVersion);
+      if (!version?.layoutJson) return this.json({}, 404);
+      const layout = JSON.parse(version.layoutJson) as LicenseTemplateLayout;
+
+      // 2. Rebuild the per-card binding data + photo assets EXACTLY as /render does (reuse the
+      //    same fetch shape — person → Name object, ordination type, campus, church).
+      const ordination = await this.repos.personOrdination.load(au.churchId, card.personOrdinationId, scope);
+      if (!ordination?.id) return this.json({}, 404);
+
+      const personRow = await this.repos.person.load(au.churchId, ordination.personId);
+      const person = personRow ? this.repos.person.convertToModel(au.churchId, personRow) : undefined;
+      const ordinationType = ordination.ordinationTypeId
+        ? await this.repos.ordinationType.load(au.churchId, ordination.ordinationTypeId)
+        : undefined;
+      const campus = ordination.campusId
+        ? await this.repos.campus.load(au.churchId, ordination.campusId)
+        : undefined;
+      const church = await this.repos.church.load(au.churchId, au.churchId);
+      const data = buildPreviewData(person as any, ordination as any, ordinationType as any, campus as any, church as any);
+
+      const assets: RenderAssets = {};
+      if ((person as any)?.photoUpdated) {
+        assets.photoSrc = "/" + au.churchId + "/membership/people/" + ordination.personId + ".png";
+        const crop = await this.repos.personPhotoCrop.loadByPurpose(au.churchId, ordination.personId, "license");
+        if (crop?.id) {
+          assets.crop = {
+            cropX: crop.cropX,
+            cropY: crop.cropY,
+            cropWidth: crop.cropWidth,
+            cropHeight: crop.cropHeight,
+            rotation: crop.rotation
+          };
+        }
+      }
+
+      // 3. Render ONE card (the reprinting workstation may apply its own printer calibration —
+      //    that is a physical-print correction, not part of the archived card content).
+      const body = req.body as { calibration?: Calibration };
+      const calibration = body?.calibration ?? NO_CALIBRATION;
+      const html = LicenseRenderHelper.buildHtml(layout, data, calibration, assets);
+      const pdf = await LicenseRenderHelper.renderPdf(html);
+
+      // 4. Archive a FRESH single-card blob; repoint the card's pdfRef at the reprint.
+      const key = "/" + au.churchId + "/membership/licenseCards/" + UniqueIdHelper.shortId() + ".pdf";
+      await FileStorageHelper.store(key, "application/pdf", pdf);
+      await this.repos.licenseCard.updateStatus(au.churchId, id, "reissued", { pdfRef: key });
+
+      await AuditLogHelper.log(
+        this.repos, au.churchId, au.id, "license", "card_reissued", "licenseCard", id,
+        { pdfRef: key }, AuditLogHelper.getClientIp(req)
+      );
+
+      // 5. Stream the printable bytes for the OS-print flow (mirror /render's byte convention).
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("X-Pdf-Ref", key);
+      res.setHeader("Access-Control-Expose-Headers", "X-Pdf-Ref");
+      return res.send(pdf);
+    });
+  }
 }
