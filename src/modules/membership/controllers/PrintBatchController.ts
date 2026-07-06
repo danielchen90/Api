@@ -157,4 +157,85 @@ export class PrintBatchController extends MembershipBaseController {
       return { batchId: batch.id, cardCount: cards.length, skipped };
     });
   }
+
+  // ── GET / — recent batches (church-scoped) for the kiosk recent-batches picker ──
+  //
+  // Declared BEFORE GET /:id so the bare-list route is not shadowed by the :id param route.
+  // Batches are church-scoped rows; per-card campusId scope is enforced at resolve/list-cards/
+  // reprint/void/regenerate time.
+  @httpGet("/")
+  public async list(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      await CampusScopeHelper.resolve(au, this.repos);
+      return this.repos.printBatch.loadRecent(au.churchId);
+    });
+  }
+
+  // ── GET /:id — poll-able DB-backed batch state ──
+  //
+  // Light on purpose (batch row only — the per-card list lives on /:id/cards). React Query
+  // polls this until status !== "rendering".
+  @httpGet("/:id")
+  public async get(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      await CampusScopeHelper.resolve(au, this.repos);
+      return this.repos.printBatch.load(au.churchId, id);
+    });
+  }
+
+  // ── GET /:id/pdf — stream the assembled multi-page PDF bytes from disk ──
+  //
+  // FileStorageHelper has NO read method (verified .d.ts), so the archived PDF is read back
+  // from disk (mirror the Phase-6 photo disk-read pattern). The client does fetch→blob→objectURL
+  // (ApiHelper cannot return bytes). Strip any ?dt= cache-buster before resolving the path.
+  @httpGet("/:id/pdf")
+  public async pdf(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      await CampusScopeHelper.resolve(au, this.repos);
+      const batch = await this.repos.printBatch.load(au.churchId, id);
+      if (!batch?.id) return this.json({ error: "not_found" }, 404);
+      if (batch.status !== "ready" || !batch.pdfRef) return this.json({ error: "not_ready" }, 409);
+
+      const buf = fs.readFileSync(path.resolve("./content") + batch.pdfRef.replace(/\?.*$/, ""));
+      res.setHeader("Content-Type", "application/pdf");
+      return res.send(buf);
+    });
+  }
+
+  // ── POST /:id/regenerate — byte-identical historical re-render at STORED versions ──
+  //
+  // Re-renders the SAME linked cards at their STORED templateVersions (via loadVersion inside
+  // renderBatch) → byte-identical to the ORIGINAL TEMPLATE regardless of later template edits
+  // (LOCKED audit-grade "exact PDF" — Success Criterion 2). Each card is re-checked against the
+  // operator's writable campuses; the binding data + photo assets are re-fetched live.
+  @httpPost("/:id/regenerate")
+  public async regenerate(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const batch = await this.repos.printBatch.load(au.churchId, id);
+      if (!batch?.id) return this.json({ error: "not_found" }, 404);
+
+      // Rebuild each ResolvedCard from the STORED row, re-checking per-card campus scope.
+      const rows = await this.repos.licenseCard.loadByBatch(au.churchId, id);
+      const cards: ResolvedCard[] = [];
+      for (const row of rows) {
+        if (!assertWritableCampus(scope, row.campusId)) continue;
+        const card = await this.resolvedCardFromRow(au.churchId, row, scope);
+        if (card) cards.push(card);
+      }
+
+      // Reset the batch to rendering/0 and fire the re-render (unawaited — the client polls).
+      await this.repos.printBatch.finish(au.churchId, id, { status: "rendering" });
+      await this.repos.printBatch.updateProgress(au.churchId, id, 0);
+
+      const renderHelper = new PrintBatchRenderHelper(this.repos);
+      renderHelper
+        .renderBatch(au.churchId, id, cards, au.id)
+        .catch((e) => this.repos.printBatch.fail(au.churchId, id, e));
+
+      return { batchId: id };
+    });
+  }
 }
