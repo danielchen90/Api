@@ -2,7 +2,7 @@ import type {
   AccessLog, Answer, ApiKey, AssociatedGroup, AuditLog, Campus, Church, ClientError, Domain, Form,
   FormSubmission, Group, GroupJoinRequest, GroupMember, GroupMemberHistory, Household, List, ListMember, MemberPermission,
   OAuthClient, OAuthCode, OAuthDeviceCode, OAuthRelaySession, OAuthToken,
-  OrdinationType, PersonOrdination, PersonPhotoCrop, LicenseTemplate, LicenseTemplateVersion,
+  OrdinationType, PersonOrdination, PersonPhotoCrop, LicenseTemplate, LicenseTemplateVersion, LicenseCard,
   Question, Role, RoleMember, RolePermission, Setting, User, UserCampus, UserChurch,
   VisibilityPreference, Webhook, WebhookDelivery
 } from "../models/index.js";
@@ -96,6 +96,11 @@ export interface MembershipDatabase {
   // Immutable per-save snapshots (TPL-03 audit history), keyed
   // UNIQUE(churchId, templateId, versionNumber).
   licenseTemplateVersions: LicenseTemplateVersion;
+  // PRT-03 print-audit rows (one per confirmed CR80 print): campus-scoped,
+  // append-only, capturing actor/timestamp/templateVersion/pdfRef/person/
+  // ordination/campus. `templateVersion` is int and `removed` is bit(1);
+  // the repo coerces them (number/boolean) on read.
+  licenseCards: LicenseCard;
   people: PeopleTable;
   questions: Question & { removed?: boolean };
   roles: Role;
