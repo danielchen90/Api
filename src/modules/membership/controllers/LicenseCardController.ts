@@ -1,10 +1,11 @@
-import { controller, httpPost } from "inversify-express-utils";
+import { controller, httpPost, requestParam } from "inversify-express-utils";
 import express from "express";
 import { MembershipBaseController } from "./MembershipBaseController.js";
 import {
   CampusScopeHelper,
   assertWritableCampus,
   CAMPUS_WRITE_PERMISSION,
+  AuditLogHelper,
   FileStorageHelper,
   UniqueIdHelper
 } from "../helpers/index.js";
@@ -182,6 +183,71 @@ export class LicenseCardController extends MembershipBaseController {
         createdBy: au.id
       });
       return saved;
+    });
+  }
+
+  // ── Card-lifecycle endpoints (PRT-04) — reprint / void / markPrinted ──
+  //
+  // Each mirrors the render/confirm guard order: write-capability gate (UNPREFIXED
+  // CAMPUS_WRITE_PERMISSION) → resolve CampusScope → load the CARD → per-card campus
+  // scope on the card's OWN campusId (a Campus Admin cannot touch another campus's card,
+  // Pitfall 6). Card status is FULLY INDEPENDENT of the ordination credential: voiding a
+  // card NEVER touches personOrdination (Pitfall 5 — the "also revoke" prompt is deferred).
+
+  // Void an issued card (LOCKED: reason required). Sets status "void" + writes an
+  // append-only AuditLogHelper row (who/when/reason). Does NOT re-render or archive, and
+  // NEVER calls repos.personOrdination.* — the credential is provably untouched.
+  @httpPost("/:id/void")
+  public async voidCard(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const card = await this.repos.licenseCard.load(au.churchId, id);
+      if (!card?.id) return this.json({}, 404);
+      if (!assertWritableCampus(scope, card.campusId)) return this.json({}, 401);
+
+      // LOCKED: a non-empty reason is required (422 otherwise). The client sends either a
+      // preset code or free-text "Other"; the server simply stores the non-empty string
+      // (preset-vs-freetext UX lives in 07-06).
+      const reason = ((req.body?.reason as string) || "").trim();
+      if (!reason) return this.json({ error: "reason_required" }, 422);
+
+      await this.repos.licenseCard.updateStatus(au.churchId, id, "void", {
+        voidReason: reason,
+        voidedBy: au.id
+      });
+
+      // Append-only, attributable audit row (who/when/reason). The credential is untouched.
+      await AuditLogHelper.log(
+        this.repos, au.churchId, au.id, "license", "card_voided", "licenseCard", id,
+        { reason }, AuditLogHelper.getClientIp(req)
+      );
+
+      return this.repos.licenseCard.load(au.churchId, id);
+    });
+  }
+
+  // Mark a card printed (+ printedAt). Called by the print-station on the download-confirm
+  // "Did they print OK?" path (mark-printed on download, then confirm voids jams). Audited.
+  @httpPost("/:id/markPrinted")
+  public async markPrinted(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const card = await this.repos.licenseCard.load(au.churchId, id);
+      if (!card?.id) return this.json({}, 404);
+      if (!assertWritableCampus(scope, card.campusId)) return this.json({}, 401);
+
+      await this.repos.licenseCard.updateStatus(au.churchId, id, "printed", { printedAt: new Date() });
+
+      await AuditLogHelper.log(
+        this.repos, au.churchId, au.id, "license", "card_printed", "licenseCard", id,
+        {}, AuditLogHelper.getClientIp(req)
+      );
+
+      return this.repos.licenseCard.load(au.churchId, id);
     });
   }
 }
