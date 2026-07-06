@@ -140,4 +140,48 @@ export class LicenseCardController extends MembershipBaseController {
       return res.send(pdf);
     });
   }
+
+  // Write the PRT-03 print-audit row on a CONFIRMED print. References the blob ALREADY
+  // archived by /render (built from renderId) — NEVER re-renders (re-rendering risks
+  // font/date/sub-pixel drift, so the audited bytes could diverge from the operator's
+  // preview — forbidden by the fidelity constraint). An unconfirmed /render leaves an
+  // orphan blob, which is acceptable (retention/rotation explicitly deferred).
+  @httpPost("/confirm")
+  public async confirm(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+
+      // Same guards as /render: write-capability gate, then campus scope on the credential.
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      const body = req.body as {
+        renderId?: string;
+        personOrdinationId?: string;
+        templateId?: string;
+        templateVersion?: number;
+      };
+      if (!body?.renderId || !body?.personOrdinationId || !body?.templateId) return this.json({}, 400);
+
+      const ordination = await this.repos.personOrdination.load(au.churchId, body.personOrdinationId, scope);
+      if (!ordination?.id) return this.json({}, 404);
+      if (!assertWritableCampus(scope, ordination.campusId)) return this.json({}, 401);
+
+      // pdfRef = the archived key from /render (cache-busted like storeLayoutImages). NO re-render.
+      const pdfRef = "/" + au.churchId + "/membership/licenseCards/" + body.renderId + ".pdf?dt=" + Date.now();
+
+      // churchId + createdBy are ALWAYS server-derived (never from the body).
+      const saved = await this.repos.licenseCard.save({
+        churchId: au.churchId,
+        personId: ordination.personId,
+        personOrdinationId: ordination.id,
+        campusId: ordination.campusId,
+        templateId: body.templateId,
+        templateVersion: Number(body.templateVersion ?? 1),
+        pdfRef,
+        createdAt: new Date(),
+        createdBy: au.id
+      });
+      return saved;
+    });
+  }
 }
