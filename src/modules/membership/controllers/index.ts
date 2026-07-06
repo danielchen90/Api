@@ -41,4 +41,4 @@ export { PersonPhotoCropController } from "./PersonPhotoCropController.js";
 export { LicenseTemplateController } from "./LicenseTemplateController.js";
 export { LicenseCardController } from "./LicenseCardController.js";
 export { PrintBatchController } from "./PrintBatchController.js";
-export { ReportController } from "./ReportController.js";
+export { LeadershipReportController } from "./LeadershipReportController.js";

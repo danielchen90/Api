@@ -32,8 +32,13 @@ import {
  * scoped-then-filtered roster via X-Report-Campus-Ids, so RPT-06 can be asserted automatically
  * against the endpoint's own output (never from spec.campusIds).
  */
+// NOTE: the class name MUST be globally unique across ALL modules — inversify-express-utils
+// registers controllers by class name and throws "Two controllers cannot have the same name"
+// at startup on a collision. The reporting module already ships a `ReportController`, so this
+// membership one is `LeadershipReportController` (08-03 fix — the 08-01 name collided and
+// crash-looped the server on deploy: healthcheck failed / 502).
 @controller("/membership/reports")
-export class ReportController extends MembershipBaseController {
+export class LeadershipReportController extends MembershipBaseController {
 
   @httpPost("/leadership/pdf")
   public async leadershipPdf(req: express.Request, res: express.Response): Promise<any> {
