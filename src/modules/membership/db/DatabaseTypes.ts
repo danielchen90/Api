@@ -2,7 +2,7 @@ import type {
   AccessLog, Answer, ApiKey, AssociatedGroup, AuditLog, Campus, Church, ClientError, Domain, Form,
   FormSubmission, Group, GroupJoinRequest, GroupMember, GroupMemberHistory, Household, List, ListMember, MemberPermission,
   OAuthClient, OAuthCode, OAuthDeviceCode, OAuthRelaySession, OAuthToken,
-  OrdinationType, PersonOrdination, PersonPhotoCrop, LicenseTemplate, LicenseTemplateVersion, LicenseCard,
+  OrdinationType, PersonOrdination, PersonPhotoCrop, LicenseTemplate, LicenseTemplateVersion, LicenseCard, PrintBatch,
   Question, Role, RoleMember, RolePermission, Setting, User, UserCampus, UserChurch,
   VisibilityPreference, Webhook, WebhookDelivery
 } from "../models/index.js";
@@ -99,8 +99,14 @@ export interface MembershipDatabase {
   // PRT-03 print-audit rows (one per confirmed CR80 print): campus-scoped,
   // append-only, capturing actor/timestamp/templateVersion/pdfRef/person/
   // ordination/campus. `templateVersion` is int and `removed` is bit(1);
-  // the repo coerces them (number/boolean) on read.
+  // the repo coerces them (number/boolean) on read. Phase-7 adds batchId +
+  // the status lifecycle columns (batchId/status/printedAt/void*) via ALTER.
   licenseCards: LicenseCard;
+  // PRT-02 batch-render entity (one per launched batch): provenance (filterJson),
+  // DB-backed progress (status + cardCount/renderedCount), per-person skips
+  // (skippedJson) and the assembled-PDF FileStorage key (pdfRef). cardCount/
+  // renderedCount are int and `removed` is bit(1); the repo coerces them on read.
+  printBatches: PrintBatch;
   people: PeopleTable;
   questions: Question & { removed?: boolean };
   roles: Role;

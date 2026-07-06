@@ -55,5 +55,6 @@ export { PersonPhotoCrop } from "./PersonPhotoCrop.js";
 export { LicenseTemplate } from "./LicenseTemplate.js";
 export { LicenseTemplateVersion } from "./LicenseTemplateVersion.js";
 export { LicenseCard } from "./LicenseCard.js";
+export { PrintBatch } from "./PrintBatch.js";
 
 export * from "./LoginModels.js";

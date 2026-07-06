@@ -18,6 +18,12 @@
 // mechanics in the model — the controller applies CampusScope on write.
 // `templateVersion` is int in MySQL and `removed` is bit(1); the repo coerces
 // them (number / boolean) in rowToModel, so the model always carries plain types.
+//
+// Phase-7 lifecycle extension (PRT-02 / PRT-04): `batchId` links a card to its
+// printBatch (null for Phase-6 single prints); `status` drives the
+// draft/queued/printed/reissued/void lifecycle (existing rows default to
+// "printed"); `printedAt`/`voidReason`/`voidedAt`/`voidedBy` stamp the print and
+// void events. All optional so Phase-6 single-print rows are untouched.
 export class LicenseCard {
   public id?: string;
   public churchId?: string;
@@ -30,4 +36,10 @@ export class LicenseCard {
   public createdAt?: Date;
   public createdBy?: string;
   public removed?: boolean;
+  public batchId?: string;
+  public status?: string;
+  public printedAt?: Date;
+  public voidReason?: string;
+  public voidedAt?: Date;
+  public voidedBy?: string;
 }
