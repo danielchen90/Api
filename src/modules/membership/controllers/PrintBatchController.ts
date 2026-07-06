@@ -238,4 +238,89 @@ export class PrintBatchController extends MembershipBaseController {
       return { batchId: id };
     });
   }
+
+  // ── GET /:id/cards — the enriched, campus-filtered per-card list ──
+  //
+  // THE data source for 07-06's per-card status list + the cardIds its reprint/void act on —
+  // WITHOUT it the per-card UI can never obtain a cardId. Campus-filtered (a Campus Admin sees
+  // ONLY their campus's cards even inside a church-scoped batch — Pitfall 6). Returned in
+  // loadByBatch order (createdAt asc == assembled-PDF page order) so 07-06 can align
+  // thumbnail[i] ↔ card[i].
+  @httpGet("/:id/cards")
+  public async cards(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const rows = await this.repos.licenseCard.loadByBatch(au.churchId, id);
+
+      const church = await this.repos.church.load(au.churchId, au.churchId);
+      const out: any[] = [];
+      for (const row of rows) {
+        // Campus-filter: keep only the operator's writable cards.
+        if (!assertWritableCampus(scope, row.campusId)) continue;
+
+        // Enrich each row for display, reusing the same repos resolveCards gathers from.
+        const personRow = await this.repos.person.load(au.churchId, row.personId);
+        const person = personRow ? this.repos.person.convertToModel(au.churchId, personRow) : undefined;
+        const personName =
+          (person as any)?.name?.display ||
+          [(person as any)?.name?.first, (person as any)?.name?.last].filter(Boolean).join(" ") ||
+          "";
+
+        const ordination = row.personOrdinationId
+          ? await this.repos.personOrdination.load(au.churchId, row.personOrdinationId, scope)
+          : undefined;
+        const ordinationType = ordination?.ordinationTypeId
+          ? await this.repos.ordinationType.load(au.churchId, ordination.ordinationTypeId)
+          : undefined;
+        const campus = row.campusId ? await this.repos.campus.load(au.churchId, row.campusId) : undefined;
+
+        out.push({
+          cardId: row.id,
+          personId: row.personId,
+          personName,
+          credentialType: (ordinationType as any)?.name ?? "",
+          credentialNumber: (ordination as any)?.credentialNumber ?? "",
+          campusId: row.campusId,
+          campusName: (campus as any)?.name ?? "",
+          status: row.status,
+          printedAt: row.printedAt,
+          voidReason: row.voidReason
+        });
+      }
+      void church; // church loaded once to mirror resolveCards' fetch shape (reserved for future fields)
+      return out;
+    });
+  }
+
+  // ── POST /:id/markPrinted — BULK mark every non-void writable card printed ──
+  //
+  // The download-confirm "Did they print OK?" action (LOCKED auto-mark-on-download). Collapsing
+  // it to ONE round-trip + ONE audit row avoids ~150 sequential per-card POSTs for a soft-cap
+  // batch. NEVER touches personOrdination — card status is independent of the credential
+  // (Pitfall 5). Distinct mount from the per-card POST /licenseCards/:id/markPrinted (07-03).
+  @httpPost("/:id/markPrinted")
+  public async markPrinted(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const rows = await this.repos.licenseCard.loadByBatch(au.churchId, id);
+
+      let count = 0;
+      for (const row of rows) {
+        if (!assertWritableCampus(scope, row.campusId)) continue;
+        if (row.status === "void") continue;
+        await this.repos.licenseCard.updateStatus(au.churchId, row.id, "printed", { printedAt: new Date() });
+        count++;
+      }
+
+      // ONE append-only audit row for the whole batch action.
+      await AuditLogHelper.log(
+        this.repos, au.churchId, au.id, "license", "batch_printed", "printBatch", id,
+        { count }, AuditLogHelper.getClientIp(req)
+      );
+
+      return { printed: count };
+    });
+  }
 }
