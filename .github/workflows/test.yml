@@ -1,0 +1,53 @@
+name: Test
+
+# PRT-06 build gate. The existing deploy workflows only run tsc; nothing runs the Jest
+# suite today, so the CR80 MediaBox assertion (LicenseRenderHelper.test.ts) needs its own
+# job. This installs a real Chromium and runs `yarn test` so a page-size regression (the
+# silent scale-to-Letter that preferCSSPageSize:true guards against) FAILS the build.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Jest (with Chromium)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install Chromium
+        run: |
+          sudo apt-get update
+          # A real Chromium for Puppeteer's page.pdf. Try the modern package name first,
+          # then the transitional one, so this works across Ubuntu runner images.
+          sudo apt-get install -y chromium || sudo apt-get install -y chromium-browser
+          CHROMIUM_BIN="$(which chromium || which chromium-browser)"
+          echo "Resolved Chromium: ${CHROMIUM_BIN}"
+          test -n "${CHROMIUM_BIN}" || { echo 'No Chromium binary found'; exit 1; }
+          # Puppeteer (getSharedBrowser) reads PUPPETEER_EXECUTABLE_PATH first; pin it to the
+          # system Chromium so the bundled download (disabled by enableScripts:false) isn't needed.
+          echo "PUPPETEER_EXECUTABLE_PATH=${CHROMIUM_BIN}" >> "$GITHUB_ENV"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run tests (PRT-06 CR80 dimension guard executes here)
+        run: yarn test
