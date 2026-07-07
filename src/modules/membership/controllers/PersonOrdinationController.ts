@@ -1,4 +1,4 @@
-import { controller, httpGet, httpPost, requestParam } from "inversify-express-utils";
+import { controller, httpGet, httpPost, httpDelete, requestParam } from "inversify-express-utils";
 import express from "express";
 import { MembershipBaseController } from "./MembershipBaseController.js";
 import {
@@ -94,10 +94,7 @@ export class PersonOrdinationController extends MembershipBaseController {
 
       // 5. ORD-08 explicit audit (BaseController auto-audit does NOT cover ordination routes).
       await AuditLogHelper.log(
-        this.repos, au.churchId, au.id, "ordination", "credential_issued",
-        "personOrdination", saved.id,
-        { status: saved.status, credentialNumber: saved.credentialNumber, ordinationTypeId: saved.ordinationTypeId, campusId: saved.campusId },
-        AuditLogHelper.getClientIp(req)
+        this.repos, au.churchId, au.id, "ordination", "credential_issued", "personOrdination", saved.id, { status: saved.status, credentialNumber: saved.credentialNumber, ordinationTypeId: saved.ordinationTypeId, campusId: saved.campusId }, AuditLogHelper.getClientIp(req)
       );
       return saved;
     });
@@ -112,8 +109,8 @@ export class PersonOrdinationController extends MembershipBaseController {
   @httpPost("/:id/status")
   public async changeStatus(
     @requestParam("id") id: string,
-    req: express.Request<{ id: string }, {}, { status: string; version: number; credentialNumber?: string; grantedDate?: Date; expirationDate?: Date; notes?: string }>,
-    res: express.Response
+      req: express.Request<{ id: string }, {}, { status: string; version: number; credentialNumber?: string; grantedDate?: Date; expirationDate?: Date; notes?: string }>,
+      res: express.Response
   ): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       const scope = await CampusScopeHelper.resolve(au, this.repos);
@@ -156,9 +153,7 @@ export class PersonOrdinationController extends MembershipBaseController {
       // 6. EXPLICIT AUDIT (ORD-08): revoke vs reissue distinguished by the target status.
       const action = body.status === "revoked" ? "credential_revoked" : "credential_reissued";
       await AuditLogHelper.log(
-        this.repos, au.churchId, au.id, "ordination", action,
-        "personOrdination", id, { from: row.status, to: body.status },
-        AuditLogHelper.getClientIp(req)
+        this.repos, au.churchId, au.id, "ordination", action, "personOrdination", id, { from: row.status, to: body.status }, AuditLogHelper.getClientIp(req)
       );
 
       // 7. Return the reloaded row (carries the bumped version for the client's next edit).
@@ -174,8 +169,8 @@ export class PersonOrdinationController extends MembershipBaseController {
   @httpPost("/:id/payment")
   public async updatePayment(
     @requestParam("id") id: string,
-    req: express.Request<{ id: string }, {}, { paid?: boolean; exempt?: boolean; version: number }>,
-    res: express.Response
+      req: express.Request<{ id: string }, {}, { paid?: boolean; exempt?: boolean; version: number }>,
+      res: express.Response
   ): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       const scope = await CampusScopeHelper.resolve(au, this.repos);
@@ -201,12 +196,44 @@ export class PersonOrdinationController extends MembershipBaseController {
 
       // 6. EXPLICIT AUDIT (ORD-08).
       await AuditLogHelper.log(
-        this.repos, au.churchId, au.id, "ordination", "credential_payment_updated",
-        "personOrdination", id, { paid, exempt }, AuditLogHelper.getClientIp(req)
+        this.repos, au.churchId, au.id, "ordination", "credential_payment_updated", "personOrdination", id, { paid, exempt }, AuditLogHelper.getClientIp(req)
       );
 
       // 7. Return the reloaded row (carries the bumped version for the client's next edit).
       return this.repos.personOrdination.load(au.churchId, id, scope);
+    });
+  }
+
+  // ── Remove (soft-delete tombstone) — write-gated + scope-gated, version-guarded, audited ──
+  //
+  // A hard removal (not a status change): sets removed=1 so the row drops out of every
+  // list/get (all reads filter removed=false). Same fixed guard order as changeStatus:
+  // write gate -> load SCOPED -> assertWritableCampus(row.campusId) -> version 409 -> audit.
+  // The row's CURRENT version is used server-side, so no client version plumbing is needed.
+  @httpDelete("/:id")
+  public async remove(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+
+      // 1. WRITE-CAPABILITY GATE first (read-only roles 401 even with the org-wide marker).
+      if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
+
+      // 2. Load the row SCOPED — out-of-scope or missing is a 404-hide.
+      const row = await this.repos.personOrdination.load(au.churchId, id, scope);
+      if (!row?.id) return this.json({}, 404);
+
+      // 3. SCOPE GATE on the LOADED row's campusId — never trust a body campusId for an existing record.
+      if (!assertWritableCampus(scope, row.campusId)) return this.json({}, 401);
+
+      // 4. VERSION-GUARDED soft-delete using the freshly loaded version.
+      const n = await this.repos.personOrdination.softDelete(au.churchId, id, row.version, au.id);
+      if (n === 0n) return this.json({ error: "version_conflict" }, 409); // concurrent edit between load and delete
+
+      // 5. EXPLICIT AUDIT (ORD-08).
+      await AuditLogHelper.log(
+        this.repos, au.churchId, au.id, "ordination", "credential_removed", "personOrdination", id, { status: row.status, ordinationTypeId: row.ordinationTypeId, campusId: row.campusId }, AuditLogHelper.getClientIp(req)
+      );
+      return { success: true, id };
     });
   }
 
@@ -244,10 +271,14 @@ export class PersonOrdinationController extends MembershipBaseController {
 
         try {
           const n = await this.repos.personOrdination.updateWithVersion({
-            id: row.id, churchId: au.churchId, status: "active",
+            id: row.id,
+            churchId: au.churchId,
+            status: "active",
             credentialNumber: row.credentialNumber,
-            grantedDate: body.grantedDate as any, expirationDate: body.expirationDate as any,
-            notes: row.notes, updatedBy: au.id
+            grantedDate: body.grantedDate as any,
+            expirationDate: body.expirationDate as any,
+            notes: row.notes,
+            updatedBy: au.id
           }, row.version);
           if (n === 0n) { skipped.push({ id, reason: "version_conflict" }); continue; }
           granted++;
