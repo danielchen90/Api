@@ -30,6 +30,7 @@ export class GroupRepo {
       labels: group.labels as any,
       slug: group.slug,
       campusId: group.campusId,
+      auxiliaryId: group.auxiliaryId,
       joinPolicy: group.joinPolicy ?? "open",
       removed: false as any
     }).execute();
@@ -53,6 +54,7 @@ export class GroupRepo {
       labels: group.labels as any,
       slug: group.slug,
       campusId: group.campusId,
+      auxiliaryId: group.auxiliaryId,
       joinPolicy: group.joinPolicy ?? "open"
     }).where("id", "=", group.id).where("churchId", "=", group.churchId).execute();
     return group;
@@ -191,6 +193,7 @@ export class GroupRepo {
       labelArray: [],
       slug: row.slug,
       campusId: row.campusId,
+      auxiliaryId: row.auxiliaryId,
       joinPolicy: (row.joinPolicy as Group["joinPolicy"]) ?? "open"
     };
     row.labels?.split(",").forEach((label: string) => result.labelArray.push(label.trim()));
