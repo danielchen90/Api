@@ -7,7 +7,10 @@ import { Permissions } from "../helpers/index.js";
 // church-admin only (Settings Edit) — assigning a cross-campus president is an
 // org-wide decision. Assign accepts a personId (resolved to the login user via
 // userChurches) or a userId directly.
-@controller("/userAuxiliaries")
+// NOTE: uses the dominant "/membership/..." route prefix (NOT the bare
+// "/userCampuses" outlier) so B1Admin's ApiHelper "/userAuxiliaries" on the
+// MembershipApi base (which already includes /membership) resolves correctly.
+@controller("/membership/userAuxiliaries")
 export class UserAuxiliaryController extends MembershipBaseController {
 
   @httpGet("/auxiliary/:auxiliaryId")
