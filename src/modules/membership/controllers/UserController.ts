@@ -234,6 +234,50 @@ export class UserController extends MembershipBaseController {
     });
   }
 
+  // Admin-only SILENT account provisioning: creates a login User from a person's
+  // record and links a userChurch to THIS church WITHOUT sending any email (unlike
+  // loadOrCreate, which sends a welcome/verification email). For bulk-provisioning
+  // leaders (e.g. auxiliary presidents) who have no login yet. Idempotent: reuses an
+  // existing user by email and an existing userChurch link. Requires the person to
+  // have an email on file. The account has a random password (never disclosed); the
+  // person can claim it later via the normal forgot-password flow when you're ready.
+  @httpPost("/provisionSilent")
+  public async provisionSilent(req: express.Request<{}, {}, { personId: string }>, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(Permissions.settings.edit)) return this.json({}, 401);
+      const { personId } = req.body;
+      if (!personId) return this.json({ error: "personId required" }, 400);
+      const person: Person = await this.repos.person.load(au.churchId, personId);
+      if (!person) return this.json({ error: "person not found" }, 404);
+      const email = person.contactInfo?.email || (person as any).email;
+      if (!email) return this.json({ error: "person has no email; cannot provision" }, 400);
+      let user = await this.repos.user.loadByEmail(email);
+      let created = false;
+      if (!user) {
+        created = true;
+        const now = new Date();
+        user = {
+          email,
+          firstName: person.name?.first || "",
+          lastName: person.name?.last || "",
+          registrationDate: now,
+          lastLogin: now,
+          password: bcrypt.hashSync(UniqueIdHelper.shortId() + UniqueIdHelper.shortId(), 10),
+          authGuid: v4()
+        } as User;
+        user = await this.repos.user.save(user);
+      }
+      const existingUc = await this.repos.userChurch.loadByPersonId(personId, au.churchId);
+      let linked = !!existingUc?.userId;
+      if (!linked) {
+        await this.repos.userChurch.save({ churchId: au.churchId, userId: user.id, personId } as any);
+        linked = true;
+      }
+      await AuditLogHelper.log(this.repos, au.churchId, au.id, "user", created ? "user_provisioned_silent" : "user_linked", "user", user.id, { personId, email }, AuditLogHelper.getClientIp(req));
+      return this.json({ userId: user.id, created, linked }, 200);
+    });
+  }
+
   @httpPost("/register", ...registerValidation)
   public async register(req: express.Request<{}, {}, RegisterUserRequest>, res: express.Response): Promise<any> {
     return this.actionWrapperAnon(req, res, async () => {
