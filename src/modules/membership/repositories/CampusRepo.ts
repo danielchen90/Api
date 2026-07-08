@@ -20,6 +20,7 @@ export class CampusRepo {
       city: model.city,
       state: model.state,
       zip: model.zip,
+      country: model.country,
       timezone: model.timezone,
       website: model.website,
       importKey: model.importKey,
@@ -36,6 +37,7 @@ export class CampusRepo {
       city: model.city,
       state: model.state,
       zip: model.zip,
+      country: model.country,
       timezone: model.timezone,
       website: model.website
     }).where("id", "=", model.id)
@@ -74,6 +76,7 @@ export class CampusRepo {
       city: data.city,
       state: data.state,
       zip: data.zip,
+      country: data.country,
       timezone: data.timezone,
       website: data.website,
       importKey: data.importKey

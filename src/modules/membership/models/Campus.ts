@@ -7,6 +7,7 @@ export class Campus {
   public city?: string;
   public state?: string;
   public zip?: string;
+  public country?: string;
   public timezone?: string;
   public website?: string;
 
