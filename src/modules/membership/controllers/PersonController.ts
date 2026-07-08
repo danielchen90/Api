@@ -117,6 +117,18 @@ export class PersonController extends MembershipBaseController {
     });
   }
 
+  // Weekly NEW-MEMBERS trend for the admin dashboard. Read-only, so it gates on
+  // People-VIEW (unprefixed) — a write gate would 401 read-only admins. Backed by
+  // person.dateAdded, which is stamped only on inserts from the deploy of the
+  // 2026-07-15_personDateAdded migration onward (going-forward only).
+  @httpGet("/newmembertrend")
+  public async getNewMemberTrend(req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(Permissions.people.view)) return this.json({}, 401);
+      else return await this.repos.person.loadNewMembersTrend(au.churchId);
+    });
+  }
+
   @httpGet("/household/:householdId")
   public async getHouseholdMembers(@requestParam("householdId") householdId: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {

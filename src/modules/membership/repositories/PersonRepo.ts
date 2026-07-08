@@ -78,6 +78,7 @@ export class PersonRepo {
       optedOut: person.optedOut,
       nametagNotes: person.nametagNotes,
       donorNumber: person.donorNumber,
+      dateAdded: sql`NOW()` as any,
       removed: false
     }).execute();
     return person;
@@ -345,6 +346,17 @@ export class PersonRepo {
     return { total, ageGroups: order.map((g) => ageMap[g]), membershipStatus, gender, maritalStatus, campus };
   }
 
+  // Weekly NEW-MEMBERS counts, bucketed by ISO week of dateAdded. Reuses the EXACT
+  // STR_TO_DATE(concat(year, week, 'Sunday')) week-bucketing as AttendanceRepo.loadTrend
+  // and AccessLogRepo.loadWeeklyCounts so all three weekly series align week-for-week.
+  // Only rows with a stamped dateAdded participate (going-forward only — existing rows
+  // are legitimately NULL and cannot be backfilled). Returns [{ week: Date, count: number }]
+  // ascending, limited to the last `weeks` weeks.
+  public async loadNewMembersTrend(churchId: string, weeks = 52) {
+    const rows = await sql<any>`SELECT STR_TO_DATE(concat(year(p.dateAdded), ' ', week(p.dateAdded, 0), ' Sunday'), '%X %V %W') AS week, count(distinct(p.id)) as count FROM people p WHERE p.churchId=${churchId} AND p.removed=0 AND p.dateAdded IS NOT NULL AND p.dateAdded >= DATE_SUB(CURDATE(), INTERVAL ${weeks} WEEK) GROUP BY year(p.dateAdded), week(p.dateAdded, 0), STR_TO_DATE(concat(year(p.dateAdded), ' ', week(p.dateAdded, 0), ' Sunday'), '%X %V %W') ORDER BY year(p.dateAdded), week(p.dateAdded, 0)`.execute(getDb());
+    return rows.rows;
+  }
+
   protected rowToModel(row: any): Person {
     const result: Person = {
       name: {
@@ -370,6 +382,7 @@ export class PersonRepo {
       photo: row.photo,
       anniversary: row.anniversary,
       birthDate: row.birthDate,
+      dateAdded: row.dateAdded,
       gender: row.gender,
       householdId: row.householdId,
       householdRole: row.householdRole,

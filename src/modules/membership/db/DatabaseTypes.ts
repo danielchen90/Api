@@ -23,6 +23,7 @@ export interface PeopleTable {
   prefix?: string;
   suffix?: string;
   birthDate?: Date;
+  dateAdded?: Date;
   gender?: string;
   maritalStatus?: string;
   anniversary?: Date;

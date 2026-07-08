@@ -8,6 +8,7 @@ export class Person {
   public name?: Name;
   public contactInfo?: ContactInfo;
   public birthDate?: Date;
+  public dateAdded?: Date;
   public gender?: string;
   public maritalStatus?: string;
   public anniversary?: Date;
