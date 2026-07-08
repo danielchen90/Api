@@ -41,10 +41,16 @@ export class MembershipCampusController extends MembershipBaseController {
       const result: Campus[] = [];
       for (const item of req.body) {
         item.churchId = au.churchId;
-        // Compare against the stored row BEFORE saving so we only geocode when the
-        // address changed or coordinates are still missing (OSM courtesy limit).
+        // Compare against the stored row BEFORE saving so we only hit the geocoder
+        // when needed (OSM/Nominatim courtesy limit). Geocode when the address
+        // changed, OR when coords are missing AND the caller didn't supply them —
+        // an explicit lat/lng in the payload (e.g. a bulk backfill) is trusted.
         const existing = item.id ? await this.repos.campus.load(au.churchId, item.id) : null;
-        const needsGeo = !!(item.address1 || item.city || item.zip) && (!existing || addressStr(existing) !== addressStr(item) || existing.latitude === null || existing.latitude === undefined);
+        const hasAddress = !!(item.address1 || item.city || item.zip);
+        const addressChanged = !existing || addressStr(existing) !== addressStr(item);
+        const itemHasCoords = item.latitude !== null && item.latitude !== undefined;
+        const coordsMissing = !existing || existing.latitude === null || existing.latitude === undefined;
+        const needsGeo = hasAddress && (addressChanged || (coordsMissing && !itemHasCoords));
         const saved = await this.repos.campus.save(item);
         // Best-effort: a geocoder failure must never fail the campus save.
         if (needsGeo) try { await GeoHelper.updateCampusAddress(saved); } catch { /* ignore geocode errors */ }
