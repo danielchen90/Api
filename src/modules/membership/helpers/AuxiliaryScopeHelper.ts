@@ -30,4 +30,12 @@ export class AuxiliaryScopeHelper {
     if (scope.mode === "deny") return false;
     return scope.auxiliaryIds.includes(auxiliaryId);
   }
+
+  // May the caller president-write this group's members? Fail-closed: a group with
+  // no auxiliaryId is NEVER president-writable (only org-wide admins touch it);
+  // otherwise identical deny/all/scoped semantics as reads on the group's auxiliary.
+  static canWriteGroup(scope: AuxiliaryScope, group: { auxiliaryId?: string } | null | undefined): boolean {
+    if (!group || !group.auxiliaryId) return false;
+    return this.canRead(scope, group.auxiliaryId);
+  }
 }

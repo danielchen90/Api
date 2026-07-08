@@ -1,7 +1,7 @@
 import { controller, httpGet, httpPost, httpDelete, requestParam } from "inversify-express-utils";
 import express from "express";
 import { MembershipBaseController } from "./MembershipBaseController.js";
-import { Permissions, UserChurchHelper } from "../helpers/index.js";
+import { Permissions, UserChurchHelper, AuxiliaryScopeHelper } from "../helpers/index.js";
 import { GroupMember } from "../models/index.js";
 import { BulkGroupMemberRequest } from "../models/requests.js";
 import { WebhookDispatcher } from "../../../shared/webhooks/index.js";
@@ -47,6 +47,7 @@ export class GroupMemberController extends MembershipBaseController {
       if (au.checkAccess(Permissions.groupMembers.view)) hasAccess = true;
       else if (req.query.groupId && au.groupIds && au.groupIds.includes(req.query.groupId.toString())) hasAccess = true;
       else if (req.query.personId && au.personId === req.query.personId.toString()) hasAccess = true;
+      else if (req.query.groupId && (await this.canPresidentReadGroup(au, req.query.groupId.toString()))) hasAccess = true;
       if (!hasAccess) return this.json({}, 401);
       else {
         let result = null;
@@ -69,11 +70,34 @@ export class GroupMemberController extends MembershipBaseController {
     return rows.filter((r) => !r.birthDate || new Date(r.birthDate) <= cutoff);
   }
 
+  // Strictly-additive president authorization: a president (userAuxiliaries row) may
+  // write members of a group belonging to an auxiliary they preside over. Resolves
+  // scope server-side, loads the group, and delegates to canWriteGroup (fail-closed
+  // on a group with no auxiliaryId). Org-wide admins resolve mode "all" here too, but
+  // they already passed the Permissions gate before this OR-branch is ever reached.
+  private async canPresidentWrite(au: any, groupId: string): Promise<boolean> {
+    if (!groupId) return false;
+    const scope = await AuxiliaryScopeHelper.resolve(au, this.repos);
+    if (scope.mode === "all") return true;
+    const group = await this.repos.group.load(au.churchId, groupId);
+    return AuxiliaryScopeHelper.canWriteGroup(scope, group as any);
+  }
+
+  // A president who may write a group's members may also read them (management UI).
+  private async canPresidentReadGroup(au: any, groupId: string): Promise<boolean> {
+    return this.canPresidentWrite(au, groupId);
+  }
+
   @httpPost("/")
   public async save(req: express.Request<{}, {}, GroupMember[]>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess(Permissions.groupMembers.edit)) {
-        return this.json({ error: "Unauthorized" }, 401);
+        // President OR-branch: every targeted group must be in the president's scope.
+        const targetGroupIds = Array.from(new Set((req.body || []).map((gm) => gm.groupId).filter(Boolean)));
+        if (targetGroupIds.length === 0) return this.json({ error: "Unauthorized" }, 401);
+        for (const gid of targetGroupIds) {
+          if (!(await this.canPresidentWrite(au, gid as string))) return this.json({ error: "Unauthorized" }, 401);
+        }
       }
 
       const promises: Promise<GroupMember>[] = [];
@@ -104,9 +128,9 @@ export class GroupMemberController extends MembershipBaseController {
   @httpPost("/bulk-add")
   public async bulkAdd(req: express.Request<{}, {}, BulkGroupMemberRequest>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess(Permissions.groupMembers.edit)) return this.json({ error: "Unauthorized" }, 401);
-
       const groupId = req.body?.groupId;
+      if (!au.checkAccess(Permissions.groupMembers.edit) && !(await this.canPresidentWrite(au, groupId))) return this.json({ error: "Unauthorized" }, 401);
+
       if (!groupId) return this.json({ error: "groupId is required" }, 400);
       const personIds = Array.isArray(req.body?.personIds) ? Array.from(new Set(req.body.personIds.filter((id) => typeof id === "string").map((id) => id.trim()).filter(Boolean))) : [];
       if (personIds.length === 0) return this.json({ error: "personIds is required" }, 400);
@@ -131,9 +155,9 @@ export class GroupMemberController extends MembershipBaseController {
   @httpPost("/bulk-remove")
   public async bulkRemove(req: express.Request<{}, {}, BulkGroupMemberRequest>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess(Permissions.groupMembers.edit)) return this.json({ error: "Unauthorized" }, 401);
-
       const groupId = req.body?.groupId;
+      if (!au.checkAccess(Permissions.groupMembers.edit) && !(await this.canPresidentWrite(au, groupId))) return this.json({ error: "Unauthorized" }, 401);
+
       if (!groupId) return this.json({ error: "groupId is required" }, 400);
       const personIds = Array.isArray(req.body?.personIds) ? Array.from(new Set(req.body.personIds.filter((id) => typeof id === "string").map((id) => id.trim()).filter(Boolean))) : [];
       if (personIds.length === 0) return this.json({ error: "personIds is required" }, 400);
@@ -180,8 +204,8 @@ export class GroupMemberController extends MembershipBaseController {
   @httpDelete("/:id")
   public async delete(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess(Permissions.groupMembers.edit)) return this.json({}, 401);
       const existing = await this.repos.groupMember.load(au.churchId, id);
+      if (!au.checkAccess(Permissions.groupMembers.edit) && !(await this.canPresidentWrite(au, (existing as any)?.groupId))) return this.json({}, 401);
       await this.repos.groupMember.delete(au.churchId, id);
       if (existing) await this.repos.groupMemberHistory.log(au.churchId, (existing as any).groupId, (existing as any).personId, "left");
       await WebhookDispatcher.emit(au.churchId, "group.member.removed", existing ?? { id, churchId: au.churchId });
