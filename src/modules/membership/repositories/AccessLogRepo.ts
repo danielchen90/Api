@@ -42,6 +42,27 @@ export class AccessLogRepo {
     return getDb().selectFrom("accessLogs").selectAll().where("churchId", "=", churchId).execute();
   }
 
+  // READ side of the going-forward login capture (the write already fires in
+  // UserChurchController.update via create() above — do NOT add a second write).
+  // Most-recent logins for the church, newest first.
+  public async loadRecent(churchId: string, limit = 25) {
+    return getDb().selectFrom("accessLogs").selectAll()
+      .where("churchId", "=", churchId)
+      .orderBy("loginTime", "desc")
+      .limit(limit)
+      .execute();
+  }
+
+  // Weekly login counts, bucketed by ISO week of loginTime. Reuses the EXACT
+  // STR_TO_DATE(concat(year, week, 'Sunday')) week-bucketing used by
+  // AttendanceRepo.loadTrend so this series aligns week-for-week with the
+  // attendance chart. Returns [{ week: Date, count: number }] ascending, limited
+  // to the last `weeks` weeks.
+  public async loadWeeklyCounts(churchId: string, weeks = 13) {
+    const rows = await sql<any>`SELECT STR_TO_DATE(concat(year(a.loginTime), ' ', week(a.loginTime, 0), ' Sunday'), '%X %V %W') AS week, count(distinct(a.id)) as count FROM accessLogs a WHERE a.churchId=${churchId} AND a.loginTime >= DATE_SUB(CURDATE(), INTERVAL ${weeks} WEEK) GROUP BY year(a.loginTime), week(a.loginTime, 0), STR_TO_DATE(concat(year(a.loginTime), ' ', week(a.loginTime, 0), ' Sunday'), '%X %V %W') ORDER BY year(a.loginTime), week(a.loginTime, 0)`.execute(getDb());
+    return rows.rows;
+  }
+
   public convertToModel(_churchId: string, data: any) { return data; }
   public convertAllToModel(_churchId: string, data: any[]) { return data || []; }
 }
