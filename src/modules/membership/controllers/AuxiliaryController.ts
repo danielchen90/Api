@@ -5,9 +5,9 @@ import { Permissions } from "../helpers/index.js";
 import { Auxiliary } from "../models/index.js";
 
 // Church-wide auxiliary vocabulary (the umbrella that per-campus group instances
-// link to via groups.auxiliaryId). Reads are auth-only church-scoped; writes
-// require the groups Edit capability. Cross-campus member rollups are assembled
-// client-side from /groups (filtered by auxiliaryId) + /groupmembers.
+// link to via groups.auxiliaryId). Reads are auth-only church-scoped; create/
+// update/delete require Settings Edit (church-admin only). Cross-campus member
+// rollups are assembled client-side from /groups (filtered by auxiliaryId) + /groupmembers.
 @controller("/membership/auxiliaries")
 export class AuxiliaryController extends MembershipBaseController {
 
@@ -30,7 +30,7 @@ export class AuxiliaryController extends MembershipBaseController {
   @httpPost("/")
   public async save(req: express.Request<{}, {}, Auxiliary[]>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess(Permissions.groups.edit)) return this.json({}, 401);
+      if (!au.checkAccess(Permissions.settings.edit)) return this.json({}, 401);
       const promises: Promise<Auxiliary>[] = [];
       req.body.forEach((item) => { item.churchId = au.churchId; promises.push(this.repos.auxiliary.save(item)); });
       const result = await Promise.all(promises);
@@ -41,7 +41,7 @@ export class AuxiliaryController extends MembershipBaseController {
   @httpDelete("/:id")
   public async delete(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess(Permissions.groups.edit)) return this.json({}, 401);
+      if (!au.checkAccess(Permissions.settings.edit)) return this.json({}, 401);
       await this.repos.auxiliary.delete(au.churchId, id);
       return {};
     });
