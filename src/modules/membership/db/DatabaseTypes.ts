@@ -4,7 +4,7 @@ import type {
   OAuthClient, OAuthCode, OAuthDeviceCode, OAuthRelaySession, OAuthToken,
   OrdinationType, PersonOrdination, PersonPhotoCrop, LicenseTemplate, LicenseTemplateVersion, LicenseCard, PrintBatch,
   Question, Role, RoleMember, RolePermission, Setting, User, UserCampus, UserChurch,
-  VisibilityPreference, Webhook, WebhookDelivery
+  UserAuxiliary, VisibilityPreference, Webhook, WebhookDelivery
 } from "../models/index.js";
 
 /**
@@ -116,6 +116,7 @@ export interface MembershipDatabase {
   settings: Setting;
   users: Omit<User, "jwt"> & { password?: string };
   userCampuses: UserCampus;
+  userAuxiliaries: UserAuxiliary;
   userChurches: UserChurch;
   visibilityPreferences: VisibilityPreference;
   webhooks: Omit<Webhook, "events" | "active"> & { events: string; active: number };

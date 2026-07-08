@@ -36,6 +36,7 @@ export { GdprController } from "./GdprController.js";
 export { ServerHealthController } from "./ServerHealthController.js";
 
 export { UserCampusController } from "./UserCampusController.js";
+export { UserAuxiliaryController } from "./UserAuxiliaryController.js";
 export { OrdinationTypeController } from "./OrdinationTypeController.js";
 export { PersonOrdinationController } from "./PersonOrdinationController.js";
 export { PersonPhotoCropController } from "./PersonPhotoCropController.js";

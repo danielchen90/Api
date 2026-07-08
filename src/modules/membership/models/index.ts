@@ -49,6 +49,7 @@ export { WebhookDelivery } from "./WebhookDelivery.js";
 export { ApiKey } from "./ApiKey.js";
 
 export { UserCampus } from "./UserCampus.js";
+export { UserAuxiliary } from "./UserAuxiliary.js";
 
 export { OrdinationType } from "./OrdinationType.js";
 export { PersonOrdination } from "./PersonOrdination.js";

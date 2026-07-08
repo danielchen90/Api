@@ -39,6 +39,7 @@ export { OAuthRelaySessionRepo } from "./OAuthRelaySessionRepo.js";
 export { ApiKeyRepo } from "./ApiKeyRepo.js";
 
 export { UserCampusRepo } from "./UserCampusRepo.js";
+export { UserAuxiliaryRepo } from "./UserAuxiliaryRepo.js";
 export { OrdinationTypeRepo } from "./OrdinationTypeRepo.js";
 export { PersonOrdinationRepo } from "./PersonOrdinationRepo.js";
 export { PersonPhotoCropRepo } from "./PersonPhotoCropRepo.js";

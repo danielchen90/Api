@@ -26,6 +26,7 @@ import {
   WebhookDeliveryRepo,
   ApiKeyRepo,
   UserCampusRepo,
+  UserAuxiliaryRepo,
   OrdinationTypeRepo,
   PersonOrdinationRepo,
   PersonPhotoCropRepo,
@@ -79,6 +80,7 @@ export class Repos {
   public apiKey: ApiKeyRepo;
 
   public userCampus: UserCampusRepo;
+  public userAuxiliary: UserAuxiliaryRepo;
   public ordinationType: OrdinationTypeRepo;
   public personOrdination: PersonOrdinationRepo;
   public personPhotoCrop: PersonPhotoCropRepo;
@@ -132,6 +134,7 @@ export class Repos {
     this.apiKey = new ApiKeyRepo();
 
     this.userCampus = new UserCampusRepo();
+    this.userAuxiliary = new UserAuxiliaryRepo();
     this.ordinationType = new OrdinationTypeRepo();
     this.personOrdination = new PersonOrdinationRepo();
     this.personPhotoCrop = new PersonPhotoCropRepo();
