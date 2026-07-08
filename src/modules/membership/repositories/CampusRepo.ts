@@ -21,6 +21,8 @@ export class CampusRepo {
       state: model.state,
       zip: model.zip,
       country: model.country,
+      latitude: model.latitude,
+      longitude: model.longitude,
       timezone: model.timezone,
       website: model.website,
       importKey: model.importKey,
@@ -38,6 +40,8 @@ export class CampusRepo {
       state: model.state,
       zip: model.zip,
       country: model.country,
+      latitude: model.latitude,
+      longitude: model.longitude,
       timezone: model.timezone,
       website: model.website
     }).where("id", "=", model.id)
@@ -77,6 +81,8 @@ export class CampusRepo {
       state: data.state,
       zip: data.zip,
       country: data.country,
+      latitude: data.latitude,
+      longitude: data.longitude,
       timezone: data.timezone,
       website: data.website,
       importKey: data.importKey

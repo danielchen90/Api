@@ -1,7 +1,7 @@
 import { controller, httpGet, httpPost, httpDelete, requestParam } from "inversify-express-utils";
 import express from "express";
 import { MembershipBaseController } from "./MembershipBaseController.js";
-import { Permissions } from "../helpers/index.js";
+import { Permissions, GeoHelper } from "../helpers/index.js";
 import { Campus } from "../models/index.js";
 
 @controller("/membership/campuses")
@@ -37,9 +37,19 @@ export class MembershipCampusController extends MembershipBaseController {
   public async save(req: express.Request<{}, {}, Campus[]>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess(Permissions.settings.edit)) return this.json({}, 401);
-      const promises: Promise<Campus>[] = [];
-      req.body.forEach((item) => { item.churchId = au.churchId; promises.push(this.repos.campus.save(item)); });
-      const result = await Promise.all(promises);
+      const addressStr = (c: any) => [c?.address1, c?.address2, c?.city, c?.state, c?.zip, c?.country].map((x) => x || "").join("|");
+      const result: Campus[] = [];
+      for (const item of req.body) {
+        item.churchId = au.churchId;
+        // Compare against the stored row BEFORE saving so we only geocode when the
+        // address changed or coordinates are still missing (OSM courtesy limit).
+        const existing = item.id ? await this.repos.campus.load(au.churchId, item.id) : null;
+        const needsGeo = !!(item.address1 || item.city || item.zip) && (!existing || addressStr(existing) !== addressStr(item) || existing.latitude === null || existing.latitude === undefined);
+        const saved = await this.repos.campus.save(item);
+        // Best-effort: a geocoder failure must never fail the campus save.
+        if (needsGeo) try { await GeoHelper.updateCampusAddress(saved); } catch { /* ignore geocode errors */ }
+        result.push(saved);
+      }
       return this.repos.campus.convertAllToModel(au.churchId, result);
     });
   }

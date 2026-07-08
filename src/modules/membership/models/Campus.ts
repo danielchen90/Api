@@ -8,6 +8,8 @@ export class Campus {
   public state?: string;
   public zip?: string;
   public country?: string;
+  public latitude?: number;
+  public longitude?: number;
   public timezone?: string;
   public website?: string;
 
