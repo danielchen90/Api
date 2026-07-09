@@ -17,3 +17,4 @@ export { CampaignRecipient } from "./CampaignRecipient.js";
 export { CampaignEvent } from "./CampaignEvent.js";
 export { EmailSuppression } from "./EmailSuppression.js";
 export { SavedAudience } from "./SavedAudience.js";
+export { ChurchEmailSettings } from "./ChurchEmailSettings.js";

@@ -16,4 +16,5 @@ export { CampaignRecipientRepo } from "./CampaignRecipientRepo.js";
 export { CampaignEventRepo } from "./CampaignEventRepo.js";
 export { EmailSuppressionRepo } from "./EmailSuppressionRepo.js";
 export { SavedAudienceRepo } from "./SavedAudienceRepo.js";
+export { ChurchEmailSettingsRepo } from "./ChurchEmailSettingsRepo.js";
 export { Repos } from "./Repos.js";
