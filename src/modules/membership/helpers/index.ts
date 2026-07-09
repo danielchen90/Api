@@ -13,6 +13,7 @@ export * from "./ordinationTypes.js";
 export { OrdinationStatusHelper, type OrdinationStatus, ORDINATION_STATUSES } from "./OrdinationStatusHelper.js";
 export * from "./applyCampusScope.js";
 export { CampusScopeHelper } from "./CampusScopeHelper.js";
+export { normalizeAudience, resolveDescriptorPersonIds, type AudienceDescriptor, type AudienceType } from "./AudienceResolveHelper.js";
 export { AuxiliaryScopeHelper, type AuxiliaryScope } from "./AuxiliaryScopeHelper.js";
 export { CaddyHelper } from "./CaddyHelper.js";
 export { ChurchHelper } from "./ChurchHelper.js";

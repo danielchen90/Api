@@ -5,6 +5,7 @@ import { UniqueIdHelper } from "@churchapps/apihelper";
 import { DateHelper, PersonHelper } from "../helpers/index.js";
 import { Person } from "../models/index.js";
 import { CollectionHelper } from "../../../shared/helpers/index.js";
+import { applyCampusScope, type CampusScope } from "../helpers/applyCampusScope.js";
 
 @injectable()
 export class PersonRepo {
@@ -163,6 +164,35 @@ export class PersonRepo {
   public async loadByIds(churchId: string, ids: string[]) {
     if (!ids.length) return [];
     return getDb().selectFrom("people").selectAll().where("id", "in", ids).where("churchId", "=", churchId).execute();
+  }
+
+  /**
+   * SCOPED audience load (Phase 10, AUD-01/02/03). The ONLY safe way to resolve an audience to a
+   * people set — churchId FIRST, then `applyCampusScope` (the ADDITIVE safety line: all→noop,
+   * scoped→IN(set), deny→1=0), THEN the descriptor narrowing. Out-of-scope people are structurally
+   * impossible because scope is applied in the query, never trusted from a client input.
+   *
+   *   - `opts.campusTargetId` → an extra `campusId = target` predicate applied WITHIN scope
+   *     (a NARROWING, never a widener — an out-of-scope campus target yields zero rows, Pitfall 7).
+   *   - `opts.personIds === null`  → whole scoped church (church/campus audiences): NO `id IN`.
+   *   - `opts.personIds === []`    → resolved to zero candidates: return [] (NEVER an unfiltered load).
+   *   - `opts.personIds === [..]`  → group/auxiliary/filter narrowing: `id IN (candidates)`.
+   */
+  public async loadForAudience(
+    churchId: string,
+    scope: CampusScope,
+    opts: { campusTargetId?: string; personIds?: string[] | null }
+  ) {
+    let q = getDb().selectFrom("people").selectAll()
+      .where("churchId", "=", churchId)
+      .where("removed", "=", false as any);
+    q = applyCampusScope(q, scope);                       // ADDITIVE campus filter (all/IN(set)/1=0) — the safety line
+    if (opts.campusTargetId) q = q.where("campusId", "=", opts.campusTargetId); // narrow WITHIN scope (Pitfall 7)
+    if (opts.personIds) {                                  // group/auxiliary/filter narrowing
+      if (opts.personIds.length === 0) return [];          // empty candidate set → no rows (never an unfiltered load)
+      q = q.where("id", "in", opts.personIds);
+    }
+    return (await q.execute());
   }
 
   public async loadByIdsOnly(ids: string[]) {

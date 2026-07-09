@@ -44,4 +44,5 @@ export { LicenseTemplateController } from "./LicenseTemplateController.js";
 export { LicenseCardController } from "./LicenseCardController.js";
 export { PrintBatchController } from "./PrintBatchController.js";
 export { LeadershipReportController } from "./LeadershipReportController.js";
+export { AudienceController } from "./AudienceController.js";
 export { AccessLogController } from "./AccessLogController.js";
