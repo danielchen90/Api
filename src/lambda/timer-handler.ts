@@ -126,6 +126,19 @@ export const handleWebhookTimer = async (_event: ScheduledEvent, _context: Conte
   }
 };
 
+export const handleCampaignSendTimer = async (_event: ScheduledEvent, _context: Context): Promise<void> => {
+  try {
+    await initEnv();
+    const { CampaignSendWorker } = await import("../modules/messaging/helpers/CampaignSendWorker.js");
+    const repos = await RepoManager.getRepos<any>("messaging");
+    const result = await CampaignSendWorker.process(repos);
+    console.log("[handleCampaignSendTimer] result:", JSON.stringify(result));
+  } catch (error) {
+    console.error("Error in campaign send timer:", error);
+    throw error;
+  }
+};
+
 export const handleScheduledTasks = async (_event: ScheduledEvent, _context: Context): Promise<void> => {
   try {
     await initEnv();

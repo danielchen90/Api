@@ -13,4 +13,5 @@ export { TextingController } from "./TextingController.js";
 export { EmailTemplateController } from "./EmailTemplateController.js";
 export { SavedAudienceController } from "./SavedAudienceController.js";
 export { CampaignAudienceController } from "./CampaignAudienceController.js";
+export { EmailCampaignController } from "./EmailCampaignController.js";
 export { WebPushController } from "./WebPushController.js";

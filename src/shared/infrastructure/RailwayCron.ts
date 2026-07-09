@@ -1,5 +1,6 @@
 import { RepoManager } from "./RepoManager.js";
 
+const FIFTEEN_SECONDS_MS = 15 * 1000;
 const ONE_MINUTE_MS = 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -46,6 +47,16 @@ const runWebhookDeliveries = async (): Promise<void> => {
   await WebhookDeliveryWorker.process(repos);
 };
 
+// Email campaign send drain (Phase 11, Plan 02) — off-thread from the /send
+// request. ~15s cadence (faster than webhooks) so a large blast progresses
+// promptly. The worker itself is exactly-once (per-recipient DB claim), so
+// overlapping timers are safe.
+const runCampaignSends = async (): Promise<void> => {
+  const { CampaignSendWorker } = await import("../../modules/messaging/helpers/CampaignSendWorker.js");
+  const repos = await RepoManager.getRepos<any>("messaging");
+  await CampaignSendWorker.process(repos);
+};
+
 export const startRailwayCron = (): void => {
   if (!process.env.RAILWAY_ENVIRONMENT) return;
 
@@ -53,6 +64,7 @@ export const startRailwayCron = (): void => {
 
   setInterval(() => void safe("30-min timer", runThirtyMinute), THIRTY_MINUTES_MS);
   setInterval(() => void safe("webhook deliveries", runWebhookDeliveries), ONE_MINUTE_MS);
+  setInterval(() => void safe("campaign sends", runCampaignSends), FIFTEEN_SECONDS_MS);
 
   const scheduleDaily = (label: string, fn: () => Promise<void>): void => {
     setTimeout(() => {
