@@ -5,4 +5,7 @@ export { Logger } from "./Logger.js";
 export { NotificationHelper } from "./NotificationHelper.js";
 export { SocketHelper } from "./SocketHelper.js";
 export { MergeFieldHelper } from "./MergeFieldHelper.js";
+export { normalizeEmail, isValidEmail } from "./emailNormalize.js";
+export { RecipientResolver } from "./RecipientResolver.js";
+export type { ResolvedAudience } from "./RecipientResolver.js";
 export * from "./Interfaces.js";
