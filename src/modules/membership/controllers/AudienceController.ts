@@ -31,8 +31,11 @@ export class AudienceController extends MembershipBaseController {
   @httpPost("/resolve")
   public async resolve(req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      // 1. READ gate — People-View, UNPREFIXED (omit apiName). A read of people to email; not a write.
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401);
+      // 1. READ gate — Campaigns-View, UNPREFIXED (omit apiName). This is the campaign-audience
+      //    seam: the messaging RecipientResolver forwards the caller's MessagingApi JWT here, and
+      //    that JWT carries MessagingApi "Campaigns" perms, NOT MembershipApi "People" (per-api
+      //    JWTs are permission-scoped). Campus scoping below still constrains WHICH people resolve.
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401);
 
       // 2. SCOPE server-side from the caller JWT — NEVER from req.body (Pitfall 3).
       const scope = await CampusScopeHelper.resolve(au, this.repos);

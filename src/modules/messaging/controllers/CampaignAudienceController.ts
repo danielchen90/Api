@@ -35,7 +35,7 @@ export class CampaignAudienceController extends MessagingBaseController {
   @httpPost("/:id/audience/preview")
   public async preview(@requestParam("id") _id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
       const descriptor = req.body; // {type,targetId?,filterJson?} — passed straight to the seam
       const resolved = await RecipientResolver.resolve(au, this.repos, descriptor);
       return {
@@ -51,7 +51,7 @@ export class CampaignAudienceController extends MessagingBaseController {
   @httpPost("/:id/audience/freeze")
   public async freeze(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
 
       const descriptor = req.body?.descriptor;
       const expectedVersion: number = req.body?.expectedVersion;

@@ -47,6 +47,11 @@ export class Permissions extends BasePermissions {
 
   static texting = { send: { contentType: "Texting", action: "Send" } };
 
+  // Email campaigns (Phase 11). MessagingApi-scoped so the MessagingApi JWT that
+  // reaches /messaging/campaigns/* actually carries them — campaign endpoints must
+  // NOT gate on People (a MembershipApi permission absent from the MessagingApi JWT).
+  static campaigns = { view: { contentType: "Campaigns", action: "View" }, send: { contentType: "Campaigns", action: "Send" } };
+
   // DoingApi service permissions — contentType is "Tasks" (covers Tasks, Workflows & Automations)
   static tasks = { view: { contentType: "Tasks", action: "View" }, edit: { contentType: "Tasks", action: "Edit" }, admin: { contentType: "Tasks", action: "Admin" } };
 
@@ -98,6 +103,8 @@ export const permissionsList: IPermission[] = [
 
   // Messaging API permissions
   { apiName: "MessagingApi", section: "Texting", action: "Send", displaySection: "Messaging", displayAction: "Send Text Messages" },
+  { apiName: "MessagingApi", section: "Campaigns", action: "View", displaySection: "Messaging", displayAction: "View Email Campaigns" },
+  { apiName: "MessagingApi", section: "Campaigns", action: "Send", displaySection: "Messaging", displayAction: "Send Email Campaigns" },
 
   // Doing API permissions (Tasks, Workflows & Automations)
   // Plans lives here because PlanAuth enforces it in the doing module; the
@@ -147,6 +154,7 @@ export type ContentType =
   | "Tasks"
   | "Admin"
   | "Texting"
+  | "Campaigns"
   | "Registrations"
   | "Schedules"
   | "Calendars";

@@ -29,7 +29,7 @@ export class EmailCampaignController extends MessagingBaseController {
   public async send(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       // Edit (not View) deliberately gates the irreversible mass send (Open Q3).
-      if (!au.checkAccess({ contentType: "People", action: "Edit" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
 
       // 1. Load campaign church-scoped; 404-hide missing / out-of-tenant.
       const campaign = await this.repos.emailCampaign.load(au.churchId, id);
@@ -72,7 +72,7 @@ export class EmailCampaignController extends MessagingBaseController {
   @httpGet("/:id/status")
   public async status(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
       const campaign = await this.repos.emailCampaign.load(au.churchId, id);
       if (!campaign) return this.json({ error: "not_found" }, 404);
       // Live per-status breakdown supplements the stored rollup counters.
@@ -91,7 +91,7 @@ export class EmailCampaignController extends MessagingBaseController {
   @httpGet("/domain-status")
   public async domainStatus(req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
       const settings = await this.repos.churchEmailSettings.loadByChurch(au.churchId);
       if (!settings || !settings.fromEmail) return this.json({ sendable: false, reason: "no-email-settings" });
       const domain = EmailCampaignController.domainOf(settings.fromEmail);
@@ -103,7 +103,7 @@ export class EmailCampaignController extends MessagingBaseController {
   @httpGet("/settings")
   public async getSettings(req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
       return this.json((await this.repos.churchEmailSettings.loadByChurch(au.churchId)) ?? {});
     });
   }
@@ -112,7 +112,7 @@ export class EmailCampaignController extends MessagingBaseController {
   @httpPost("/settings")
   public async saveSettings(req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "Edit" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
 
       // Sanitize fromName — strip CR/LF (header injection, Pitfall 6).
       const fromName = (req.body?.fromName ?? "").replace(/[\r\n]+/g, " ").trim();
