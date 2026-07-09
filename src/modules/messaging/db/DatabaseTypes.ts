@@ -1,4 +1,4 @@
-import type { BlockedIp, Connection, Conversation, DeliveryLog, Device, DeviceContent, EmailTemplate, Message, Notification, NotificationPreference, PrivateMessage, SentText, TextingProvider } from "../models/index.js";
+import type { BlockedIp, Connection, Conversation, DeliveryLog, Device, DeviceContent, EmailTemplate, Message, Notification, NotificationPreference, PrivateMessage, SentText, TextingProvider, EmailCampaign, CampaignRecipient, CampaignEvent, EmailSuppression } from "../models/index.js";
 
 export interface MessagingDatabase {
   blockedIps: BlockedIp;
@@ -14,4 +14,8 @@ export interface MessagingDatabase {
   privateMessages: Omit<PrivateMessage, "conversation">;
   sentTexts: SentText;
   textingProviders: TextingProvider;
+  emailCampaigns: EmailCampaign;
+  campaignRecipients: CampaignRecipient;
+  campaignEvents: CampaignEvent;
+  emailSuppression: EmailSuppression;
 }

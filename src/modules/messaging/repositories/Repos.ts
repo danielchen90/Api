@@ -1,4 +1,4 @@
-import { BlockedIpRepo, ConnectionRepo, ConversationRepo, DeliveryLogRepo, DeviceRepo, DeviceContentRepo, EmailTemplateRepo, MessageRepo, NotificationRepo, NotificationPreferenceRepo, PrivateMessageRepo, TextingProviderRepo, SentTextRepo } from "./index.js";
+import { BlockedIpRepo, ConnectionRepo, ConversationRepo, DeliveryLogRepo, DeviceRepo, DeviceContentRepo, EmailTemplateRepo, MessageRepo, NotificationRepo, NotificationPreferenceRepo, PrivateMessageRepo, TextingProviderRepo, SentTextRepo, EmailCampaignRepo, CampaignRecipientRepo, CampaignEventRepo, EmailSuppressionRepo } from "./index.js";
 
 export class Repos {
   public blockedIp: BlockedIpRepo;
@@ -14,6 +14,10 @@ export class Repos {
   public privateMessage: PrivateMessageRepo;
   public textingProvider: TextingProviderRepo;
   public sentText: SentTextRepo;
+  public emailCampaign: EmailCampaignRepo;
+  public campaignRecipient: CampaignRecipientRepo;
+  public campaignEvent: CampaignEventRepo;
+  public emailSuppression: EmailSuppressionRepo;
 
   public static getCurrent = () => new Repos();
 
@@ -31,5 +35,9 @@ export class Repos {
     this.privateMessage = new PrivateMessageRepo();
     this.textingProvider = new TextingProviderRepo();
     this.sentText = new SentTextRepo();
+    this.emailCampaign = new EmailCampaignRepo();
+    this.campaignRecipient = new CampaignRecipientRepo();
+    this.campaignEvent = new CampaignEventRepo();
+    this.emailSuppression = new EmailSuppressionRepo();
   }
 }
