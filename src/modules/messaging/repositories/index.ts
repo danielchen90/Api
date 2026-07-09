@@ -11,4 +11,8 @@ export { PrivateMessageRepo } from "./PrivateMessageRepo.js";
 export { TextingProviderRepo } from "./TextingProviderRepo.js";
 export { SentTextRepo } from "./SentTextRepo.js";
 export { EmailTemplateRepo } from "./EmailTemplateRepo.js";
+export { EmailCampaignRepo } from "./EmailCampaignRepo.js";
+export { CampaignRecipientRepo } from "./CampaignRecipientRepo.js";
+export { CampaignEventRepo } from "./CampaignEventRepo.js";
+export { EmailSuppressionRepo } from "./EmailSuppressionRepo.js";
 export { Repos } from "./Repos.js";

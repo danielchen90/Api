@@ -18,6 +18,7 @@ export class EmailTemplateRepo {
       name: model.name,
       subject: model.subject,
       htmlContent: model.htmlContent,
+      blockJson: model.blockJson,
       category: model.category,
       dateCreated: sql`NOW()`,
       dateModified: sql`NOW()`
@@ -30,6 +31,7 @@ export class EmailTemplateRepo {
       name: model.name,
       subject: model.subject,
       htmlContent: model.htmlContent,
+      blockJson: model.blockJson,
       category: model.category,
       dateModified: sql`NOW()`
     }).where("id", "=", model.id).where("churchId", "=", model.churchId).execute();
@@ -60,6 +62,7 @@ export class EmailTemplateRepo {
       name: data.name,
       subject: data.subject,
       htmlContent: data.htmlContent,
+      blockJson: data.blockJson,
       category: data.category,
       dateCreated: data.dateCreated,
       dateModified: data.dateModified
