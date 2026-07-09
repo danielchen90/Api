@@ -12,3 +12,7 @@ export { DeliveryLog } from "./DeliveryLog.js";
 export { TextingProvider } from "./TextingProvider.js";
 export { SentText } from "./SentText.js";
 export { EmailTemplate } from "./EmailTemplate.js";
+export { EmailCampaign } from "./EmailCampaign.js";
+export { CampaignRecipient } from "./CampaignRecipient.js";
+export { CampaignEvent } from "./CampaignEvent.js";
+export { EmailSuppression } from "./EmailSuppression.js";

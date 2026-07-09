@@ -4,6 +4,7 @@ export class EmailTemplate {
   public name?: string;
   public subject?: string;
   public htmlContent?: string;
+  public blockJson?: string;
   public category?: string;
   public dateCreated?: Date;
   public dateModified?: Date;
