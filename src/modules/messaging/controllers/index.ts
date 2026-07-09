@@ -11,4 +11,5 @@ export { NotificationPreferenceController } from "./NotificationPreferenceContro
 export { PrivateMessageController } from "./PrivateMessageController.js";
 export { TextingController } from "./TextingController.js";
 export { EmailTemplateController } from "./EmailTemplateController.js";
+export { SavedAudienceController } from "./SavedAudienceController.js";
 export { WebPushController } from "./WebPushController.js";
