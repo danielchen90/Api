@@ -61,6 +61,28 @@ export class EmailCampaignRepo {
     return this.rowToModel(row);
   }
 
+  // Campaigns in a given status for ONE church (scoped callers). removed=false.
+  public async loadByStatus(churchId: string, status: string): Promise<EmailCampaign[]> {
+    const rows = await getDb().selectFrom("emailCampaigns").selectAll()
+      .where("churchId", "=", churchId)
+      .where("status", "=", status)
+      .where("removed", "=", false)
+      .execute();
+    return rows.map((r) => this.rowToModel(r));
+  }
+
+  // Cross-tenant drain read (NO churchId filter) — the send worker calls this with
+  // 'sending' to find EVERY in-flight campaign across all churches. removed=false.
+  // The per-recipient claim + church-scoped repo reads keep tenancy intact once the
+  // worker is inside a campaign (each has its own churchId).
+  public async loadAllByStatus(status: string): Promise<EmailCampaign[]> {
+    const rows = await getDb().selectFrom("emailCampaigns").selectAll()
+      .where("status", "=", status)
+      .where("removed", "=", false)
+      .execute();
+    return rows.map((r) => this.rowToModel(r));
+  }
+
   // Recent campaigns, newest-first — church-scoped (list picker). selectAll is
   // fine for this foundation; a body-omitting list read can be added later.
   public async loadRecent(churchId: string, limit = 20): Promise<EmailCampaign[]> {

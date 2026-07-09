@@ -53,6 +53,68 @@ export class CampaignRecipientRepo {
     return rows.map((r) => this.rowToModel(r));
   }
 
+  // Send-drain READ — the next batch of unsent rows for a campaign (DLV-03: the
+  // worker processes ≤ `limit` rows per pass, never the whole list at once). Uses
+  // the (churchId, campaignId, status) send-drain index (2026-07-08 migration).
+  public async loadPendingBatch(churchId: string, campaignId: string, limit = 100): Promise<CampaignRecipient[]> {
+    const rows = await getDb().selectFrom("campaignRecipients").selectAll()
+      .where("churchId", "=", churchId)
+      .where("campaignId", "=", campaignId)
+      .where("status", "=", "pending")
+      .limit(limit)
+      .execute();
+    return rows.map((r) => this.rowToModel(r));
+  }
+
+  // ── Exactly-once per-recipient claim (DLV-04) ──
+  //
+  // The matched-rows-guarded claim: flip a SINGLE `pending` row to `sending`. The
+  // WHERE status='pending' means only an UNCLAIMED row can win — and because the
+  // claim literally CHANGES status pending→sending, matched ALWAYS equals changed
+  // (no MySQL matched-vs-changed ambiguity here, unlike a same-value UPDATE), so
+  // `numUpdatedRows === 1n` reliably means THIS worker won the row. Concurrent
+  // drains cannot both win. The DB row-claim — NOT a transport idempotency token
+  // (Pitfall 5: SES v1 has none) — IS the exactly-once guard. Compare against the
+  // BigInt `1n`, never `1` (Pitfall 2).
+  public async claimForSending(churchId: string, id: string): Promise<boolean> {
+    const res = await getDb().updateTable("campaignRecipients")
+      .set({ status: "sending" })
+      .where("churchId", "=", churchId)
+      .where("id", "=", id)
+      .where("status", "=", "pending")
+      .executeTakeFirst();
+    return res.numUpdatedRows === 1n;
+  }
+
+  // ── Progress + completion counts (SND-06) ──
+  //
+  // Per-status counts for a campaign: powers the /status X-of-N progress AND the
+  // worker's completion detection (flip to `sent` only when pending===0 &&
+  // sending===0). One GROUP BY, church-scoped. Coerce MySQL's bigint COUNT to a
+  // number.
+  public async countByStatus(
+    churchId: string,
+    campaignId: string
+  ): Promise<{ sent: number; failed: number; pending: number; sending: number; total: number }> {
+    const rows = await getDb().selectFrom("campaignRecipients")
+      .select(["status"])
+      .select((eb) => eb.fn.countAll<number>().as("cnt"))
+      .where("churchId", "=", churchId)
+      .where("campaignId", "=", campaignId)
+      .groupBy("status")
+      .execute();
+    const out = { sent: 0, failed: 0, pending: 0, sending: 0, total: 0 };
+    for (const r of rows) {
+      const n = Number((r as any).cnt);
+      out.total += n;
+      if ((r as any).status === "sent") out.sent = n;
+      else if ((r as any).status === "failed") out.failed = n;
+      else if ((r as any).status === "pending") out.pending = n;
+      else if ((r as any).status === "sending") out.sending = n;
+    }
+    return out;
+  }
+
   // Webhook tenancy lookup — resolve a provider message id back to its recipient.
   public async loadByProviderMessageId(churchId: string, providerMessageId: string): Promise<CampaignRecipient> {
     const row = await getDb().selectFrom("campaignRecipients").selectAll()
