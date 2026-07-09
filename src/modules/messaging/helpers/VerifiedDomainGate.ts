@@ -22,8 +22,11 @@ export class VerifiedDomainGate {
   private static cache: Record<string, { ok: boolean; at: number }> = {};
 
   private static client() {
-    // Region us-east-2 matches the repo's SES region (EmailHelper / email-provider-is-ses).
-    return new SESClient({ region: "us-east-2" });
+    // Region is env-driven (AWS_REGION), defaulting to us-east-1 — where huro.church
+    // is verified with production sending access (confirmed live 2026-07-09). The
+    // earlier us-east-2 assumption was wrong: no identity is verified there, so the
+    // gate reported the domain unverified. Keep in sync with SesEmailDeliveryProvider.
+    return new SESClient({ region: process.env.AWS_REGION || "us-east-1" });
   }
 
   // Live: identity VERIFIED (VerificationStatus === "Success") AND account

@@ -3,10 +3,12 @@ import { EmailSendRequest, EmailSendResult, IEmailDeliveryProvider } from "./IEm
 
 // DLV-01 / DLV-05 — the SINGLE concrete implementation of the provider seam
 // (Phase 11, Plan 01). SES v1 SendEmail. A later Resend swap replaces ONLY this
-// file. Region us-east-2 matches @churchapps/apihelper EmailHelper.getSESClient()
-// (the repo's SES region — email-provider-is-ses memory: huro.church sends on SES).
+// file. Region is env-driven (AWS_REGION) and defaults to us-east-1 — that is
+// where huro.church is verified with production sending access (confirmed live
+// 2026-07-09; the earlier us-east-2 assumption was wrong — nothing is verified
+// there). Keep in sync with VerifiedDomainGate.
 export class SesEmailDeliveryProvider implements IEmailDeliveryProvider {
-  private readonly ses = new SESClient({ region: "us-east-2" });
+  private readonly ses = new SESClient({ region: process.env.AWS_REGION || "us-east-1" });
 
   public async send(r: EmailSendRequest): Promise<EmailSendResult> {
     try {
