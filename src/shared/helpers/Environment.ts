@@ -111,13 +111,20 @@ export class Environment extends EnvironmentBase {
   }
 
   private static initializeModuleConfigs(config: any) {
-    // These can be overridden in monolith for internal calls
-    this.membershipApi = config.membershipApi || config.apiUrl + "/membership";
-    this.attendanceApi = config.attendanceApi || config.apiUrl + "/attendance";
-    this.contentApi = config.contentApi || config.apiUrl + "/content";
-    this.givingApi = config.givingApi || config.apiUrl + "/giving";
-    this.messagingApi = config.messagingApi || config.apiUrl + "/messaging";
-    this.doingApi = config.doingApi || config.apiUrl + "/doing";
+    // These can be overridden in monolith for internal calls.
+    // apiUrl is the base for the per-module seam URLs (e.g. the in-process
+    // membership /audiences/resolve call the messaging RecipientResolver makes).
+    // Allow an API_URL env override so a deploy whose JSON config leaves apiUrl
+    // empty (config/railway.json) still yields ABSOLUTE seam URLs — a relative
+    // "/membership" base makes axios/undici throw "Invalid URL". Mirrors the
+    // CONTENT_ROOT / STORE_API_URL env-override pattern already used here.
+    const apiUrl = process.env.API_URL || config.apiUrl || "";
+    this.membershipApi = config.membershipApi || apiUrl + "/membership";
+    this.attendanceApi = config.attendanceApi || apiUrl + "/attendance";
+    this.contentApi = config.contentApi || apiUrl + "/content";
+    this.givingApi = config.givingApi || apiUrl + "/giving";
+    this.messagingApi = config.messagingApi || apiUrl + "/messaging";
+    this.doingApi = config.doingApi || apiUrl + "/doing";
     this.storeApi = process.env.STORE_API_URL || config.storeApi || "";
   }
 
