@@ -53,9 +53,11 @@ class MessagingModuleGatewayDb implements MessagingModuleGateway {
     const repos = await this.repos();
     const template = await repos.emailTemplate.loadById(churchId, templateId);
     if (!template) return false;
-    const church = { name: churchName };
-    const subject = MergeFieldHelper.resolve(subjectOverride || template.subject || "", recipient, church);
-    const body = MergeFieldHelper.resolve(template.htmlContent || "", recipient, church);
+    // Flat merge map: person fields + churchName (MergeFieldHelper.resolve now
+    // takes a single string→string data map).
+    const mergeData = { ...recipient, churchName };
+    const subject = MergeFieldHelper.resolve(subjectOverride || template.subject || "", mergeData);
+    const body = MergeFieldHelper.resolve(template.htmlContent || "", mergeData);
     await EmailHelper.sendTemplatedEmail(Environment.supportEmail, recipient.email, churchName || "B1", "", subject, body, "ChurchEmailTemplate.html");
     return true;
   }

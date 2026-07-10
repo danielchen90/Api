@@ -88,8 +88,6 @@ export class EmailTemplateController extends MessagingBaseController {
         const churchResp = await axios.get(Environment.membershipApi + "/churches/" + au.churchId, { headers: { Authorization: "Bearer " + au.jwt } });
         churchName = churchResp.data?.name || "";
       } catch { /* church name is optional */ }
-      const church = { name: churchName };
-
       // Load recipients
       let members: GroupMemberEmailDetail[];
       if (groupId) {
@@ -108,9 +106,10 @@ export class EmailTemplateController extends MessagingBaseController {
       const replyTo = au.email || undefined;
 
       for (const member of eligible) {
-        const person = { firstName: member.firstName, lastName: member.lastName, displayName: member.displayName, email: member.email };
-        const resolvedSubject = MergeFieldHelper.resolve(subject, person, church);
-        const resolvedBody = MergeFieldHelper.resolve(htmlContent, person, church);
+        // Flat merge map: person fields + churchName (single-map resolve signature).
+        const mergeData = { firstName: member.firstName, lastName: member.lastName, displayName: member.displayName, email: member.email, churchName };
+        const resolvedSubject = MergeFieldHelper.resolve(subject, mergeData);
+        const resolvedBody = MergeFieldHelper.resolve(htmlContent, mergeData);
 
         try {
           await EmailHelper.sendTemplatedEmail(from, member.email, churchName || "B1", "", resolvedSubject, resolvedBody, "ChurchEmailTemplate.html", replyTo);
