@@ -13,26 +13,41 @@ import { ListRuleHelper } from "./ListRuleHelper.js";
  * over whatever narrowing this returns, so an out-of-scope person is structurally impossible in
  * the final query no matter what this helper produces.
  *
- * THE AUDIENCE IS type+target+filter — person IDs are OUTPUTS, never inputs. There is NO
- * `personIds` field on the descriptor and one is NEVER accepted (Anti-pattern: trusting a
- * client-supplied personId[] is exactly the cross-campus leak this phase closes).
+ * THE AUDIENCE IS type+target+filter — for the filter/target carry types (church/campus/group/
+ * auxiliary) person IDs are OUTPUTS, never inputs, and a body `personIds` field is NEVER accepted
+ * (Anti-pattern: trusting a client-supplied personId[] on a FILTER descriptor is exactly the
+ * cross-campus leak this phase closes).
+ *
+ * SINGLE EXPLICIT EXCEPTION — `type:"people"`: a campaign may carry an explicit checkbox-selected
+ * person set (CONTEXT locks BOTH carry types — filter-based AND explicit personIds). ONLY when
+ * `type === "people"` is `personIds` read from the body, and even then it is treated as a mere
+ * CANDIDATE narrowing set — NOT a bypass. The candidate set is STILL intersected with campus scope
+ * downstream by `PersonRepo.loadForAudience` (applyCampusScope): an out-of-scope explicit id is
+ * structurally dropped, never trusted. So the campus-scope doctrine holds for every carry type.
  */
-export type AudienceType = "church" | "campus" | "group" | "auxiliary";
+export type AudienceType = "church" | "campus" | "group" | "auxiliary" | "people";
 
 export interface AudienceDescriptor {
   type: AudienceType;
   targetId?: string;
   // RAW filterJson string, stored/forwarded verbatim — parsed ONLY at resolve time, never trusted here.
   filterJson?: string;
+  // EXPLICIT checkbox-selected people — read from the body ONLY when type === "people"; a CANDIDATE
+  // narrowing set that is still campus-scoped downstream (never trusted as a scope bypass).
+  personIds?: string[];
 }
 
-const AUDIENCE_TYPES: AudienceType[] = ["church", "campus", "group", "auxiliary"];
+const AUDIENCE_TYPES: AudienceType[] = ["church", "campus", "group", "auxiliary", "people"];
 
 /**
  * Coerce a request body into a typed AudienceDescriptor. This is the ONLY place a request body is
  * read into the descriptor: `type` is coerced to the closed union (unknown/missing → "church"),
  * `targetId` is an optional string, `filterJson` is an optional RAW string (never parsed here).
- * A `personIds` field on the body is IGNORED by construction — the descriptor has no such field.
+ * A `personIds` field on the body is IGNORED by construction for every carry type EXCEPT
+ * `type === "people"` — for the filter/target types a client-supplied personId[] is the exact
+ * cross-campus leak this phase closes and is never read. For `type === "people"` ONLY, `personIds`
+ * is read (coerced/filtered to strings) as the explicit candidate set — still campus-scoped
+ * downstream by loadForAudience, so it is a narrowing input, never a scope bypass.
  */
 export function normalizeAudience(body: any): AudienceDescriptor {
   const rawType = body?.type;
@@ -40,6 +55,11 @@ export function normalizeAudience(body: any): AudienceDescriptor {
   const descriptor: AudienceDescriptor = { type };
   if (typeof body?.targetId === "string" && body.targetId) descriptor.targetId = body.targetId;
   if (typeof body?.filterJson === "string" && body.filterJson) descriptor.filterJson = body.filterJson;
+  // EXPLICIT-people carry type ONLY: read personIds as string[]. For all other types personIds is
+  // IGNORED (never read) — trusting a client personId[] on a filter/target descriptor is the leak.
+  if (type === "people" && Array.isArray(body?.personIds)) {
+    descriptor.personIds = body.personIds.filter((id: any): id is string => typeof id === "string" && !!id);
+  }
   return descriptor;
 }
 
@@ -82,6 +102,15 @@ export async function resolveDescriptorPersonIds(
       if (!groupIds.length) { ids = []; break; }
       const members = (await repos.groupMember.loadForGroups(churchId, groupIds)) as any[];
       ids = distinctIds(members.map((m) => m.personId));
+      break;
+    }
+    case "people": {
+      // EXPLICIT checkbox-selected people: the descriptor's personIds ARE the candidate set (like
+      // group/auxiliary expansion produces a candidate set). This is the SINGLE place a body-supplied
+      // personId[] is honored, and it is honored ONLY as a candidate — loadForAudience STILL runs it
+      // through applyCampusScope, so an out-of-scope explicit id is structurally dropped (never a
+      // scope bypass). An empty list resolves to zero candidates (never a church-wide widener).
+      ids = distinctIds(descriptor.personIds ?? []);
       break;
     }
   }
