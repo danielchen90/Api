@@ -70,12 +70,32 @@ export class AudienceController extends MembershipBaseController {
         });
       }
 
+      // 6b. Enrich with the church name + per-person campus name/address. The compliant
+      //     CAN-SPAM footer (CampaignRenderHelper.buildFooter → renderContext) needs churchName +
+      //     the campus physical address, but the membership DB (not the messaging module) is the
+      //     ONLY source, so it must ride the snapshot from HERE — otherwise renderContext reads
+      //     these keys off mergeData, finds them absent, and every sent/previewed email ships an
+      //     EMPTY footer (no church identity, no legal address). BATCH: one church load + one
+      //     campuses loadAll, mapped by campusId (no N+1). Frozen at resolve so a later
+      //     church/campus edit never drifts a sent card (same doctrine as the credential above).
+      const church = await this.repos.church.loadById(au.churchId);
+      const churchName: string = (church as any)?.name || "";
+      const campuses = (await this.repos.campus.loadAll(au.churchId)) as any[];
+      const campusById = new Map<string, any>(campuses.map((c) => [c.id, c]));
+      const campusAddressLine = (c: any): string =>
+        [c?.address1, c?.address2, c?.city, c?.state, c?.zip, c?.country]
+          .filter((part) => part && String(part).trim().length > 0)
+          .join(" ");
+
       // 7. Map to the resolver contract. mergeData keys MUST match MergeFieldHelper (12-01) + client
-      //    mergeTags (12-05): person basics + ordination credential. A person with no active credential
-      //    surfaces empty values (render-time fallback handles blanks). churchName/campusName/campusAddress
-      //    are constant-per-campaign and injected later by CampaignRenderHelper, NOT here.
+      //    mergeTags (12-05): person basics + ordination credential + church/campus footer fields. A
+      //    person with no active credential (or a blank address field) surfaces empty values
+      //    (render-time fallback handles blanks). The discrete address fields (address1/city/state/
+      //    zip/country) are carried too so CampaignRenderHelper.buildFooter (via renderContext) can
+      //    assemble the CAN-SPAM address line identically for preview, test-send, and real send.
       return people.map((p) => {
         const cred = credByPerson.get(p.id) ?? { ordinationTitle: "", credentialNumber: "", ordinationStatus: "" };
+        const campus = p.campusId ? campusById.get(p.campusId) : undefined;
         return {
           personId: p.id,
           email: p.email,
@@ -87,7 +107,16 @@ export class AudienceController extends MembershipBaseController {
             email: p.email,
             ordinationTitle: cred.ordinationTitle,
             credentialNumber: cred.credentialNumber,
-            ordinationStatus: cred.ordinationStatus
+            ordinationStatus: cred.ordinationStatus,
+            churchName,
+            campusName: campus?.name || "",
+            campusAddress: campusAddressLine(campus),
+            address1: campus?.address1 || "",
+            address2: campus?.address2 || "",
+            city: campus?.city || "",
+            state: campus?.state || "",
+            zip: campus?.zip || "",
+            country: campus?.country || ""
           }
         };
       });
