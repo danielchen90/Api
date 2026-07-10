@@ -6,6 +6,8 @@ import { RecipientResolver } from "../helpers/RecipientResolver.js";
 import { CampaignRenderHelper, CampaignRenderContext } from "../helpers/CampaignRenderHelper.js";
 import { VerifiedDomainGate } from "../helpers/VerifiedDomainGate.js";
 import { SesEmailDeliveryProvider } from "../helpers/SesEmailDeliveryProvider.js";
+import { FileStorageHelper } from "@churchapps/apihelper";
+import { Environment } from "../../../shared/helpers/Environment.js";
 
 // The rich block-builder CRUD/preview/test-send/upload surface the Phase-12
 // builder UI consumes (SND-03 / BLD-02 / BLD-04 / BLD-05 / BLD-06 / BLD-07).
@@ -253,6 +255,49 @@ export class CampaignCrudController extends MessagingBaseController {
         return this.json({ error: "send_failed", detail: result.error }, 502);
       }
       return this.json({ sent: true, to, renderedFromRecipient: total > 0 });
+    });
+  }
+
+  // ── BLD-05: image upload → absolute URL for the email builder ──
+  // Unlayer's registerCallback('image', ...) uploads an image and expects
+  // done({url}). Mirror content/FileController.saveFile: decode the base64 data
+  // URL, store under a church-namespaced campaigns subfolder, return an ABSOLUTE
+  // contentRoot URL (Pitfall 4 — email clients strip relative src; on Railway with
+  // FILE_STORE unset, contentRoot is the public base over the /app/content volume,
+  // per railway-api-local-volume-storage memory). Reuse the EXACT
+  // FileStorageHelper.store + Environment.contentRoot mechanism FileController uses;
+  // do NOT invent new storage. Route is :id-agnostic so it works before the draft
+  // exists (the builder can upload while composing a brand-new campaign).
+  @httpPost("/upload-image")
+  public async uploadImage(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
+
+      const b = req.body ?? {};
+      // Accept the same body shape FileController uses: a base64 data-URL in
+      // fileContents (+ fileType + fileName). The client sends what Unlayer hands it.
+      const fileContents: string = b.fileContents ?? b.file ?? "";
+      const fileType: string = b.fileType ?? b.contentType ?? "image/png";
+      const rawName: string = (b.fileName ?? b.name ?? ("image-" + Date.now())).toString();
+      if (!fileContents) return this.json({ error: "no_file", code: "NO_FILE" }, 422);
+
+      // Sanitize the file name to a safe basename (no path traversal / separators).
+      const fileName = rawName.replace(/[^\w.\-]+/g, "_").replace(/^_+/, "").slice(-120) || ("image-" + Date.now());
+
+      // key namespaced under the church + a campaigns subfolder (mirrors
+      // FileController's "/" + churchId + "/files/..." convention).
+      const key = "/" + au.churchId + "/files/campaigns/" + fileName;
+
+      // A base64 data URL is "data:<mime>;base64,<payload>"; take the payload after
+      // the comma (FileController does the same split). Fall back to the raw string.
+      const base64 = fileContents.includes(",") ? fileContents.split(",")[1] : fileContents;
+      const buffer = Buffer.from(base64, "base64");
+      await FileStorageHelper.store(key, fileType, buffer);
+
+      // ABSOLUTE URL (contentRoot-prefixed) + a cache-buster dt — exactly what
+      // FileController.saveFile builds. Ready to feed Unlayer done({url}).
+      const url = Environment.contentRoot + key + "?dt=" + Date.now().toString();
+      return this.json({ url });
     });
   }
 
