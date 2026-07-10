@@ -105,6 +105,17 @@ export const permissionsList: IPermission[] = [
   { apiName: "MessagingApi", section: "Texting", action: "Send", displaySection: "Messaging", displayAction: "Send Text Messages" },
   { apiName: "MessagingApi", section: "Campaigns", action: "View", displaySection: "Messaging", displayAction: "View Email Campaigns" },
   { apiName: "MessagingApi", section: "Campaigns", action: "Send", displaySection: "Messaging", displayAction: "Send Email Campaigns" },
+  // Org-wide campus marker on the MessagingApi JWT (12-09 audience-scope fix). The campaign
+  // audience-resolve seam (membership AudienceController.resolve) is reached with the caller's
+  // MessagingApi JWT, and CampusScopeHelper.resolve short-circuits to mode:"all" only when that
+  // JWT carries the UNPREFIXED CAMPUS_ORGWIDE_MARKER (Campus__Admin). It rides the MembershipApi
+  // JWT for org-wide roles but was ABSENT from the MessagingApi JWT, so a whole-church/campus
+  // audience resolved to mode:"deny" → zero deliverables → 422 NO_DELIVERABLE. Listing it under
+  // MessagingApi lets addAllPermissions inject it into the MessagingApi bucket for Domain Admins
+  // (mirrors exactly how Phase 11 put Campaigns View/Send on MessagingApi). buildPermStrings emits
+  // it unprefixed (Campus__Admin) so au.checkAccess(CAMPUS_ORGWIDE_MARKER) matches. Users must
+  // RE-LOGIN to pick it up (JWTs minted before this perm existed won't contain it).
+  { apiName: "MessagingApi", section: "Campus", action: "Admin", displaySection: "Messaging", displayAction: "Campaign Audience (Org-wide)" },
 
   // Doing API permissions (Tasks, Workflows & Automations)
   // Plans lives here because PlanAuth enforces it in the doing module; the
@@ -155,6 +166,7 @@ export type ContentType =
   | "Admin"
   | "Texting"
   | "Campaigns"
+  | "Campus"
   | "Registrations"
   | "Schedules"
   | "Calendars";

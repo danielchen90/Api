@@ -23,10 +23,15 @@ import { ApiName, Actions } from "../../../shared/helpers/index.js";
  * and never match — so these MUST be unprefixed, exactly like `Permissions.people.edit`. `apiName`
  * is kept OPTIONAL only so the union/imports stay available; it is deliberately left unset.
  *
- * `contentType` is intentionally typed `string` rather than the `ContentType` union: the org-wide
- * marker's contentType ("Campus") MUST NOT be a member of the union / `permissionsList` (Pitfall 1:
- * `UserHelper.replaceDomainAdminPermissions()` strips or auto-injects anything in `permissionsList`
- * at login expansion, which would silently destroy the marker).
+ * `contentType` is typed `string` rather than the `ContentType` union for historical reasons (the
+ * marker predates "Campus" being in the union). NOTE (12-09): "Campus"/"Admin" is now a DELIBERATE
+ * `permissionsList` entry — but ONLY under `apiName:"MessagingApi"`, so `addAllPermissions` injects
+ * `Campus__Admin` into the MessagingApi bucket for Domain Admins. That is what lets the campaign
+ * audience-resolve seam (reached with the MessagingApi JWT) short-circuit to `mode:"all"`. This is
+ * SAFE: `replaceDomainAdminPermissions()` only splices `Domain/Admin` from the MembershipApi bucket
+ * and then calls the ADD-IF-MISSING `addAllPermissions` — it never STRIPS `Campus/Admin`, and the
+ * membership org-wide marker (seeded as a role permission, unprefixed) is untouched. The earlier
+ * "must NOT appear in permissionsList" warning only ever applied to a MembershipApi listing.
  */
 export interface CampusRolePermission {
   apiName?: ApiName;
@@ -42,8 +47,10 @@ export interface CampusRolePermission {
  * `replaceDomainAdminPermissions` (which injects the UNPREFIXED standard set), so org-wide owners
  * resolve to `mode:"all"` as intended.
  *
- * CRITICAL (Pitfall 1): this contentType/action MUST NOT appear in `permissionsList`, so
- * `UserHelper.replaceDomainAdminPermissions()` never strips or auto-injects it.
+ * NOTE (12-09): this marker IS now listed in `permissionsList` under `apiName:"MessagingApi"` so it
+ * also rides the MessagingApi JWT (the campaign audience-resolve seam is reached with THAT token).
+ * `addAllPermissions` only adds-if-missing and `replaceDomainAdminPermissions` never strips it, so
+ * this is safe. See the header comment above for the full rationale.
  */
 export const CAMPUS_ORGWIDE_MARKER = { contentType: "Campus", action: "Admin" } as const satisfies CampusRolePermission;
 
