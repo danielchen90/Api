@@ -1,6 +1,6 @@
 import { VerifiedDomainGate } from "./VerifiedDomainGate.js";
 import { SesEmailDeliveryProvider } from "./SesEmailDeliveryProvider.js";
-import { MergeFieldHelper } from "./MergeFieldHelper.js";
+import { CampaignRenderHelper, CampaignRenderContext } from "./CampaignRenderHelper.js";
 import { EmailCampaign, CampaignRecipient } from "../models/index.js";
 
 // The DB-as-queue send drain (Phase 11, Plan 02). A near-copy of
@@ -74,31 +74,32 @@ export class CampaignSendWorker {
 
         attempted++;
 
-        // Render per-recipient at send time (Open Q1 resolution) against the frozen
-        // mergeSnapshot. A text part MUST always exist (DLV-05) — derive one from
-        // the HTML if renderedText is empty.
-        const person = CampaignSendWorker.mergePerson(recipient);
-        const html = MergeFieldHelper.resolve(campaign.renderedHtml || "", person);
-        const rawText = campaign.renderedText && campaign.renderedText.trim().length > 0
-          ? campaign.renderedText
-          : CampaignSendWorker.htmlToText(campaign.renderedHtml || "");
-        const text = MergeFieldHelper.resolve(rawText, person);
+        // Render per-recipient at send time through the ONE shared renderer
+        // (CampaignRenderHelper) so the real send emits byte-identical merged HTML
+        // — same strip + merge + footer + text-part — as preview and test-send.
+        // The frozen mergeSnapshot is the merge data (person basics now; church /
+        // campus / ordination keys once plan 12-02 enriches the freeze). Footer
+        // context is derived from that SAME frozen snapshot (below), so the send
+        // worker needs no membership-repo/HTTP lookup it cannot cheaply do here.
+        const mergeData = CampaignSendWorker.mergeData(recipient);
+        const context = CampaignSendWorker.renderContext(mergeData);
+        const result = await CampaignRenderHelper.render(campaign, mergeData, context);
 
-        const result = await provider.send({
+        const sent = await provider.send({
           from,
           replyTo,
           to: recipient.email,
-          subject: campaign.subject,
-          html,
-          text,
+          subject: result.subject,
+          html: result.html,
+          text: result.text,
           campaignId: campaign.id,
           recipientId: recipient.id
         });
 
-        if (result.success) {
+        if (sent.success) {
           await repos.campaignRecipient.updateStatus(campaign.churchId, recipient.id, {
             status: "sent",
-            providerMessageId: result.providerMessageId
+            providerMessageId: sent.providerMessageId
           });
           batchSent++;
           succeeded++;
@@ -107,7 +108,7 @@ export class CampaignSendWorker {
           // deferred). Record the error for the operator.
           await repos.campaignRecipient.updateStatus(campaign.churchId, recipient.id, {
             status: "failed",
-            errorMessage: result.error
+            errorMessage: sent.error
           });
           batchFailed++;
           failed++;
@@ -156,39 +157,37 @@ export class CampaignSendWorker {
     return (value || "").replace(/[\r\n]+/g, " ").trim();
   }
 
-  // Build the MergeFieldHelper person from the frozen mergeSnapshot (+ email
+  // Build the flat merge-data map from the frozen mergeSnapshot (+ email
   // fallback). mergeSnapshot is a RAW JSON STRING on the row; parse defensively.
-  private static mergePerson(recipient: CampaignRecipient): { firstName?: string; lastName?: string; displayName?: string; email?: string } {
+  // We pass the WHOLE snapshot through so any church/campus/ordination keys the
+  // freeze added (plan 12-02) flow to the renderer untouched — the render helper
+  // reads whatever keys exist.
+  private static mergeData(recipient: CampaignRecipient): Record<string, string | undefined> {
     let snap: any = {};
     try {
       snap = recipient.mergeSnapshot ? JSON.parse(recipient.mergeSnapshot) : {};
     } catch {
       snap = {};
     }
-    return {
-      firstName: snap.firstName,
-      lastName: snap.lastName,
-      displayName: snap.displayName,
-      email: snap.email ?? recipient.email
-    };
+    return { ...snap, email: snap.email ?? recipient.email };
   }
 
-  // Minimal HTML→text fallback so a text part always exists (DLV-05) when the
-  // campaign carries no explicit plain-text body. Strip tags + collapse whitespace.
-  private static htmlToText(html: string): string {
-    return html
-      .replace(/<style[\s\S]*?<\/style>/gi, "")
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(/<br\s*\/?>(?=)/gi, "\n")
-      .replace(/<\/(p|div|h[1-6]|tr|li)>/gi, "\n")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">")
-      .replace(/[ \t]+/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+  // Derive the constant-per-render footer context from the frozen snapshot. The
+  // cross-tenant background worker carries no membership repo / per-request JWT to
+  // look church/campus up over HTTP, so the frozen snapshot IS the source (drift-
+  // free by construction). Empty until plan 12-02 enriches the freeze; the footer
+  // simply omits the blank address line.
+  private static renderContext(data: Record<string, string | undefined>): CampaignRenderContext {
+    return {
+      churchName: data.churchName,
+      campusName: data.campusName,
+      address1: data.address1 ?? data.campusAddress,
+      address2: data.address2,
+      city: data.city,
+      state: data.state,
+      zip: data.zip,
+      country: data.country
+    };
   }
 
   private static sleep(ms: number): Promise<void> {
