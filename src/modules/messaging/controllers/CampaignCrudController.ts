@@ -2,6 +2,10 @@ import { controller, httpGet, httpPost, requestParam } from "inversify-express-u
 import express from "express";
 import { MessagingBaseController } from "./MessagingBaseController.js";
 import { EmailCampaign } from "../models/index.js";
+import { RecipientResolver } from "../helpers/RecipientResolver.js";
+import { CampaignRenderHelper, CampaignRenderContext } from "../helpers/CampaignRenderHelper.js";
+import { VerifiedDomainGate } from "../helpers/VerifiedDomainGate.js";
+import { SesEmailDeliveryProvider } from "../helpers/SesEmailDeliveryProvider.js";
 
 // The rich block-builder CRUD/preview/test-send/upload surface the Phase-12
 // builder UI consumes (SND-03 / BLD-02 / BLD-04 / BLD-05 / BLD-06 / BLD-07).
@@ -136,6 +140,161 @@ export class CampaignCrudController extends MessagingBaseController {
 
       return this.json({ id, version: expectedVersion + 1 }, 200);
     });
+  }
+
+  // ── BLD-06: server-side preview against a LIVE pre-freeze recipient ──
+  // (OPEN QUESTION #3) BEFORE freeze there are NO campaignRecipients rows, so the
+  // preview resolves the audience LIVE via the SAME RecipientResolver the freeze
+  // uses (zero compose→send drift) and picks one deliverable's mergeData. A
+  // recipientIndex param steps "next recipient" (wraps on overflow). Render flows
+  // through the ONE shared CampaignRenderHelper so the previewed bytes are
+  // byte-identical to what a real send emits (strip + merge + footer + text). NO
+  // persistence, NO send.
+  @httpPost("/:id/preview")
+  public async preview(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed
+
+      const campaign = await this.repos.emailCampaign.load(au.churchId, id);
+      if (!campaign) return this.json({ error: "not_found" }, 404);
+
+      // Resolve LIVE. The descriptor comes from the body (the builder's current
+      // audience pick) or falls back to the campaign's stored audienceFilterJson.
+      const descriptor = req.body?.descriptor ?? CampaignCrudController.parseJson(campaign.audienceFilterJson);
+      const resolved = await RecipientResolver.resolve(au, this.repos, descriptor);
+      const total = resolved.deliverable.length;
+      if (total === 0) return this.json({ error: "no_recipients", code: "NO_DELIVERABLE" }, 422);
+
+      const idx = CampaignCrudController.wrapIndex(req.body?.recipientIndex, total);
+      const recipient = resolved.deliverable[idx];
+
+      // Constant-per-render footer context from the SAME enriched mergeData (12-02
+      // carries church/campus/ordination keys). No membership-repo/HTTP lookup —
+      // the resolver already enriched the snapshot (drift-free by construction).
+      const context = CampaignCrudController.renderContext(recipient.mergeData);
+      const rendered = await CampaignRenderHelper.render(campaign, recipient.mergeData, context);
+
+      return {
+        html: rendered.html,
+        subject: rendered.subject,
+        recipientEmail: recipient.email,
+        recipientIndex: idx,
+        totalRecipients: total
+      };
+    });
+  }
+
+  // ── BLD-07: test-send — one real email, ZERO stat pollution ──
+  // FIRST hard-gate on VerifiedDomainGate.isSendable (mirror EmailCampaignController
+  // — 422 DOMAIN_UNVERIFIED). Resolve LIVE, pick recipient[index]'s mergeData,
+  // render via the shared helper, send ONE email via SES to the test address
+  // (defaults client-side to the logged-in staff email). CRITICAL (Pitfall 5):
+  // this path NEVER writes campaignRecipients and NEVER calls updateCounters —
+  // persist NOTHING. from/replyTo derive from the church email settings exactly as
+  // the send worker does (no re-derivation of SES config).
+  @httpPost("/:id/test-send")
+  public async testSend(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
+
+      const campaign = await this.repos.emailCampaign.load(au.churchId, id);
+      if (!campaign) return this.json({ error: "not_found" }, 404);
+
+      // From-identity from the church email settings (same as the worker).
+      const settings = await this.repos.churchEmailSettings.loadByChurch(au.churchId);
+      if (!settings || !settings.fromEmail) {
+        return this.json({ error: "No sender identity configured", code: "NO_EMAIL_SETTINGS" }, 422);
+      }
+
+      // LIVE verified-domain gate BEFORE composing/sending (DLV-02).
+      const domain = CampaignCrudController.domainOf(settings.fromEmail);
+      if (!(await VerifiedDomainGate.isSendable(domain))) {
+        return this.json({ error: "Sending domain not verified", code: "DOMAIN_UNVERIFIED" }, 422);
+      }
+
+      // Test address defaults to the acting staff email (client can override).
+      const to = ((req.body?.to ?? au.email) || "").trim();
+      if (!CampaignCrudController.isValidEmail(to)) {
+        return this.json({ error: "invalid_test_address", code: "INVALID_TO" }, 422);
+      }
+
+      // Resolve LIVE for merge data (same resolver / descriptor path as preview).
+      const descriptor = req.body?.descriptor ?? CampaignCrudController.parseJson(campaign.audienceFilterJson);
+      const resolved = await RecipientResolver.resolve(au, this.repos, descriptor);
+      // If there is no deliverable audience yet, still allow a test with empty merge
+      // data so a designer can proof the layout — merge fields fall back per helper.
+      const total = resolved.deliverable.length;
+      const mergeData = total > 0
+        ? resolved.deliverable[CampaignCrudController.wrapIndex(req.body?.recipientIndex, total)].mergeData
+        : {};
+
+      const context = CampaignCrudController.renderContext(mergeData);
+      const rendered = await CampaignRenderHelper.render(campaign, mergeData, context);
+
+      const fromName = CampaignCrudController.sanitizeHeader(settings.fromName);
+      const from = fromName ? `${fromName} <${settings.fromEmail}>` : settings.fromEmail;
+      const replyTo = settings.replyTo ? CampaignCrudController.sanitizeHeader(settings.replyTo) : undefined;
+
+      const provider = new SesEmailDeliveryProvider();
+      const result = await provider.send({
+        from,
+        replyTo,
+        to,
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+        // campaignId is for FUTURE SNS correlation ONLY — it is NOT persisted here
+        // and never touches campaignRecipients / counters (Pitfall 5).
+        campaignId: id,
+        recipientId: "test-send"
+      });
+
+      if (!result.success) {
+        return this.json({ error: "send_failed", detail: result.error }, 502);
+      }
+      return this.json({ sent: true, to, renderedFromRecipient: total > 0 });
+    });
+  }
+
+  // Derive the constant-per-render footer context from enriched mergeData. Mirrors
+  // CampaignSendWorker.renderContext so preview/test/real render identically.
+  protected static renderContext(data: Record<string, string | undefined>): CampaignRenderContext {
+    const d = data || {};
+    return {
+      churchName: d.churchName,
+      campusName: d.campusName,
+      address1: d.address1 ?? d.campusAddress,
+      address2: d.address2,
+      city: d.city,
+      state: d.state,
+      zip: d.zip,
+      country: d.country
+    };
+  }
+
+  // Wrap a client-supplied recipient index into [0,total) (default 0).
+  protected static wrapIndex(raw: any, total: number): number {
+    if (total <= 0) return 0;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.floor(n) % total;
+  }
+
+  // Parse a RAW JSON string column back to an object for the resolver descriptor.
+  protected static parseJson(value?: string): any {
+    if (!value) return undefined;
+    try { return JSON.parse(value); } catch { return undefined; }
+  }
+
+  // The part after the last '@' (lowercased). Empty if malformed.
+  protected static domainOf(email: string): string {
+    const at = (email || "").lastIndexOf("@");
+    return at >= 0 ? email.slice(at + 1).toLowerCase() : "";
+  }
+
+  // Tiny syntactic address check (no library — mirrors EmailCampaignController).
+  protected static isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || "");
   }
 
   // ── shared helpers ──
