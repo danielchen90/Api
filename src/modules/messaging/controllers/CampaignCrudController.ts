@@ -1,7 +1,7 @@
 import { controller, httpGet, httpPost, requestParam } from "inversify-express-utils";
 import express from "express";
 import { MessagingBaseController } from "./MessagingBaseController.js";
-import { EmailCampaign } from "../models/index.js";
+import { EmailCampaign, EmailTemplate } from "../models/index.js";
 import { RecipientResolver } from "../helpers/RecipientResolver.js";
 import { CampaignRenderHelper, CampaignRenderContext } from "../helpers/CampaignRenderHelper.js";
 import { VerifiedDomainGate } from "../helpers/VerifiedDomainGate.js";
@@ -29,6 +29,108 @@ import { Environment } from "../../../shared/helpers/Environment.js";
 // stronger-than-read write gate).
 @controller("/messaging/campaigns")
 export class CampaignCrudController extends MessagingBaseController {
+
+  // ── BLD-02: reusable-template save/list/get seam ──
+  // Declared FIRST so the LITERAL "/templates" routes register before the "/:id"
+  // catch-all (inversify-express-utils = declaration order, Express = first match
+  // wins). This is BLD-02's concrete home: save the current builder design as a
+  // REUSABLE emailTemplate (blockJson) and list/reload those when starting or
+  // replacing a campaign design. Reuses the EXISTING EmailTemplateRepo (which
+  // already persists/reads blockJson — Phase 9) — no new table, no parallel repo.
+  // The legacy /emailTemplates controller and its send path are UNTOUCHED.
+
+  // save-as-template — persist the builder design as a reusable template.
+  @httpPost("/templates")
+  public async saveTemplate(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
+      const b = req.body ?? {};
+      // blockJson is the current builder design (editor.saveDesign); htmlContent is
+      // the exported render so the template also works for legacy HTML senders.
+      const model: EmailTemplate = {
+        churchId: au.churchId, // server-derived; never trust body churchId
+        name: b.name,
+        subject: CampaignCrudController.sanitizeHeader(b.subject),
+        blockJson: CampaignCrudController.asJsonString(b.blockJson),
+        htmlContent: b.renderedHtml ?? b.htmlContent ?? "",
+        // Templates are CHURCH-scoped (no campusId column on emailTemplates). Tag
+        // builder designs with a stable category so the picker can group them.
+        category: b.category ?? "Saved designs"
+      };
+      const saved = await this.repos.emailTemplate.save(model);
+      return this.json({ id: saved.id, name: saved.name });
+    });
+  }
+
+  // list-templates — saved + legacy templates for the picker. hasBlockJson lets the
+  // UI distinguish builder-designs from HTML-only (blockJson NULL) templates; both
+  // MUST list (BLD-02 back-compat) and the list never carries the full blockJson.
+  @httpGet("/templates")
+  public async listTemplates(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed
+      return this.repos.emailTemplate.loadByChurchId(au.churchId);
+    });
+  }
+
+  // get-template — one template incl. blockJson so the builder can
+  // editor.loadDesign(JSON.parse(blockJson)). 404-hide missing / church-mismatch.
+  // A legacy blockJson-NULL template returns with blockJson:null (UI falls back to
+  // htmlContent / disables "load into builder") — it does NOT error (BLD-02).
+  @httpGet("/templates/:id")
+  public async getTemplate(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed
+      const tpl = await this.repos.emailTemplate.loadById(au.churchId, id);
+      if (!tpl) return this.json({ error: "not_found" }, 404);
+      return tpl;
+    });
+  }
+
+  // ── BLD-05: image upload → absolute URL for the email builder ──
+  // Declared with the other LITERAL single-segment POST routes (before "/:id") so
+  // Express (first-match-wins) never routes POST /upload-image into the draft
+  // update handler. Unlayer's registerCallback('image', ...) uploads an image and
+  // expects done({url}). Mirror content/FileController.saveFile: decode the base64
+  // data URL, store under a church-namespaced campaigns subfolder, return an
+  // ABSOLUTE contentRoot URL (Pitfall 4 — email clients strip relative src; on
+  // Railway with FILE_STORE unset, contentRoot is the public base over the
+  // /app/content volume, per railway-api-local-volume-storage memory). Reuse the
+  // EXACT FileStorageHelper.store + Environment.contentRoot mechanism FileController
+  // uses; do NOT invent new storage. Route is :id-agnostic so it works before the
+  // draft exists (the builder can upload while composing a brand-new campaign).
+  @httpPost("/upload-image")
+  public async uploadImage(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
+
+      const b = req.body ?? {};
+      // Accept the same body shape FileController uses: a base64 data-URL in
+      // fileContents (+ fileType + fileName). The client sends what Unlayer hands it.
+      const fileContents: string = b.fileContents ?? b.file ?? "";
+      const fileType: string = b.fileType ?? b.contentType ?? "image/png";
+      const rawName: string = (b.fileName ?? b.name ?? ("image-" + Date.now())).toString();
+      if (!fileContents) return this.json({ error: "no_file", code: "NO_FILE" }, 422);
+
+      // Sanitize the file name to a safe basename (no path traversal / separators).
+      const fileName = rawName.replace(/[^\w.\-]+/g, "_").replace(/^_+/, "").slice(-120) || ("image-" + Date.now());
+
+      // key namespaced under the church + a campaigns subfolder (mirrors
+      // FileController's "/" + churchId + "/files/..." convention).
+      const key = "/" + au.churchId + "/files/campaigns/" + fileName;
+
+      // A base64 data URL is "data:<mime>;base64,<payload>"; take the payload after
+      // the comma (FileController does the same split). Fall back to the raw string.
+      const base64 = fileContents.includes(",") ? fileContents.split(",")[1] : fileContents;
+      const buffer = Buffer.from(base64, "base64");
+      await FileStorageHelper.store(key, fileType, buffer);
+
+      // ABSOLUTE URL (contentRoot-prefixed) + a cache-buster dt — exactly what
+      // FileController.saveFile builds. Ready to feed Unlayer done({url}).
+      const url = Environment.contentRoot + key + "?dt=" + Date.now().toString();
+      return this.json({ url });
+    });
+  }
 
   // ── SND-03: list draft + sent campaigns for the campaign list page ──
   // Newest-first, church-scoped. Returns the list-card fields (id/name/subject/
@@ -59,10 +161,17 @@ export class CampaignCrudController extends MessagingBaseController {
   // Church-scoped load; 404-hide a missing / out-of-tenant id. Returns the full
   // design payload (blockJson / renderedHtml / subject / preheader /
   // audienceFilterJson / version / status) so the client can rehydrate the editor.
+  // NOTE: the reusable-template routes below use the LITERAL "/templates" segment.
+  // inversify-express-utils registers this controller's routes in method-declaration
+  // order and Express matches first-registered-wins, so the concrete "/templates"
+  // GET/POST handlers are declared BEFORE this "/:id" catch-all. This "/:id" handler
+  // additionally guards the reserved "templates" segment as belt-and-suspenders so a
+  // future re-order can never route /templates into a campaign load.
   @httpGet("/:id")
   public async get(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed
+      if (id === "templates") return this.json({ error: "not_found" }, 404); // reserved literal
       const campaign = await this.repos.emailCampaign.load(au.churchId, id);
       if (!campaign) return this.json({ error: "not_found" }, 404);
       return campaign;
@@ -112,6 +221,7 @@ export class CampaignCrudController extends MessagingBaseController {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
 
+      if (id === "templates" || id === "upload-image") return this.json({ error: "not_found" }, 404); // reserved literals (their own handlers win by declaration order)
       const b = req.body ?? {};
       const expectedVersion: number = b.expectedVersion;
 
@@ -255,49 +365,6 @@ export class CampaignCrudController extends MessagingBaseController {
         return this.json({ error: "send_failed", detail: result.error }, 502);
       }
       return this.json({ sent: true, to, renderedFromRecipient: total > 0 });
-    });
-  }
-
-  // ── BLD-05: image upload → absolute URL for the email builder ──
-  // Unlayer's registerCallback('image', ...) uploads an image and expects
-  // done({url}). Mirror content/FileController.saveFile: decode the base64 data
-  // URL, store under a church-namespaced campaigns subfolder, return an ABSOLUTE
-  // contentRoot URL (Pitfall 4 — email clients strip relative src; on Railway with
-  // FILE_STORE unset, contentRoot is the public base over the /app/content volume,
-  // per railway-api-local-volume-storage memory). Reuse the EXACT
-  // FileStorageHelper.store + Environment.contentRoot mechanism FileController uses;
-  // do NOT invent new storage. Route is :id-agnostic so it works before the draft
-  // exists (the builder can upload while composing a brand-new campaign).
-  @httpPost("/upload-image")
-  public async uploadImage(req: express.Request, res: express.Response): Promise<any> {
-    return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
-
-      const b = req.body ?? {};
-      // Accept the same body shape FileController uses: a base64 data-URL in
-      // fileContents (+ fileType + fileName). The client sends what Unlayer hands it.
-      const fileContents: string = b.fileContents ?? b.file ?? "";
-      const fileType: string = b.fileType ?? b.contentType ?? "image/png";
-      const rawName: string = (b.fileName ?? b.name ?? ("image-" + Date.now())).toString();
-      if (!fileContents) return this.json({ error: "no_file", code: "NO_FILE" }, 422);
-
-      // Sanitize the file name to a safe basename (no path traversal / separators).
-      const fileName = rawName.replace(/[^\w.\-]+/g, "_").replace(/^_+/, "").slice(-120) || ("image-" + Date.now());
-
-      // key namespaced under the church + a campaigns subfolder (mirrors
-      // FileController's "/" + churchId + "/files/..." convention).
-      const key = "/" + au.churchId + "/files/campaigns/" + fileName;
-
-      // A base64 data URL is "data:<mime>;base64,<payload>"; take the payload after
-      // the comma (FileController does the same split). Fall back to the raw string.
-      const base64 = fileContents.includes(",") ? fileContents.split(",")[1] : fileContents;
-      const buffer = Buffer.from(base64, "base64");
-      await FileStorageHelper.store(key, fileType, buffer);
-
-      // ABSOLUTE URL (contentRoot-prefixed) + a cache-buster dt — exactly what
-      // FileController.saveFile builds. Ready to feed Unlayer done({url}).
-      const url = Environment.contentRoot + key + "?dt=" + Date.now().toString();
-      return this.json({ url });
     });
   }
 
