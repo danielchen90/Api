@@ -48,15 +48,49 @@ export class AudienceController extends MembershipBaseController {
       const personIds = await resolveDescriptorPersonIds(au.churchId, descriptor, this.repos);
 
       // 5. Load people SCOPED — out-of-scope is structurally impossible (applyCampusScope in loadForAudience).
-      const people = await this.repos.person.loadForAudience(au.churchId, scope, { campusTargetId, personIds });
+      const people = (await this.repos.person.loadForAudience(au.churchId, scope, { campusTargetId, personIds })) as any[];
 
-      // 6. Map to the resolver contract.
-      return (people as any[]).map((p) => ({
-        personId: p.id,
-        email: p.email,
-        campusId: p.campusId,
-        mergeData: { firstName: p.firstName, lastName: p.lastName, displayName: p.displayName }
-      }));
+      // 6. Enrich mergeData with the ACTIVE ordination credential (BLD-03 third merge-field category),
+      //    frozen into the snapshot at RESOLVE time (not render time) so a later revoke/re-grant never
+      //    drifts a sent card. BATCH the credential lookup for the resolved id set (no N+1) — same
+      //    campus scope, so an out-of-scope credential is structurally impossible. First active row per
+      //    person wins (createdAt desc = most recent grant). ordinationType.name IS the title.
+      const resolvedIds = people.map((p) => p.id).filter((id): id is string => !!id);
+      const activeOrdinations = await this.repos.personOrdination.loadActiveForPeople(au.churchId, resolvedIds, scope);
+      const ordinationTypes = (await this.repos.ordinationType.loadAll(au.churchId)) as any[];
+      const typeNameById = new Map<string, string>(ordinationTypes.map((t) => [t.id, t.name]));
+      // personId → first (most-recent) active credential's merge fields.
+      const credByPerson = new Map<string, { ordinationTitle: string; credentialNumber: string; ordinationStatus: string }>();
+      for (const ord of activeOrdinations) {
+        if (credByPerson.has(ord.personId)) continue; // rows are createdAt-desc → keep the first (most recent)
+        credByPerson.set(ord.personId, {
+          ordinationTitle: (ord.ordinationTypeId && typeNameById.get(ord.ordinationTypeId)) || "",
+          credentialNumber: ord.credentialNumber || "",
+          ordinationStatus: ord.status || ""
+        });
+      }
+
+      // 7. Map to the resolver contract. mergeData keys MUST match MergeFieldHelper (12-01) + client
+      //    mergeTags (12-05): person basics + ordination credential. A person with no active credential
+      //    surfaces empty values (render-time fallback handles blanks). churchName/campusName/campusAddress
+      //    are constant-per-campaign and injected later by CampaignRenderHelper, NOT here.
+      return people.map((p) => {
+        const cred = credByPerson.get(p.id) ?? { ordinationTitle: "", credentialNumber: "", ordinationStatus: "" };
+        return {
+          personId: p.id,
+          email: p.email,
+          campusId: p.campusId,
+          mergeData: {
+            firstName: p.firstName,
+            lastName: p.lastName,
+            displayName: p.displayName,
+            email: p.email,
+            ordinationTitle: cred.ordinationTitle,
+            credentialNumber: cred.credentialNumber,
+            ordinationStatus: cred.ordinationStatus
+          }
+        };
+      });
     });
   }
 }

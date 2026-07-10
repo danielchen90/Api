@@ -91,6 +91,23 @@ export class PersonOrdinationRepo {
     return rows.map((r) => this.rowToModel(r));
   }
 
+  // BATCH active-credential load for an id set (avoids N+1 when enriching a resolved audience's
+  // mergeData with ordination merge fields — 12-02). churchId filter FIRST, then applyCampusScope
+  // layered on top (so an out-of-scope credential is never surfaced), narrowed to status='active'
+  // and the given personIds. Empty id set → [] (never a church-wide load). Ordered createdAt desc
+  // so the FIRST active row per person (most recent grant) wins when a caller picks one-per-person.
+  public async loadActiveForPeople(churchId: string, personIds: string[], scope: CampusScope): Promise<PersonOrdination[]> {
+    if (!personIds.length) return [];
+    let q = getDb().selectFrom("personOrdinations").selectAll()
+      .where("churchId", "=", churchId)
+      .where("removed", "=", false)
+      .where("status", "=", "active")
+      .where("personId", "in", personIds);
+    q = applyCampusScope(q, scope);
+    const rows = await q.orderBy("createdAt", "desc").execute();
+    return rows.map((r) => this.rowToModel(r));
+  }
+
   // ── ORD-07 optimistic-concurrency guard ──
   //
   // ALWAYS bumps version = version + 1 so the row's bytes change whenever the
