@@ -115,6 +115,45 @@ export class CampaignRecipientRepo {
     return out;
   }
 
+  // ── Engagement rollup (TRK-02) — compute-on-read, NEVER incremented ──
+  //
+  // The dashboard is manual-refresh, so headline engagement counts are RECOMPUTED
+  // from the per-recipient stamps on every call (mirrors countByStatus). This is
+  // inherently redelivery-safe: the 13-01 webhook first-seen stamps each field, so
+  // a duplicate SNS delivery can never move a count (no ++ anywhere). One aggregate
+  // query (conditional SUMs) → one round-trip; church + campaign scoped. Coerce
+  // MySQL's bigint SUM to a number.
+  //   - delivered = status IN ('delivered','sent') OR any engagement stamp present
+  //                 (a Delivery event stamps status='delivered'; an open/click also
+  //                  proves delivery even if the Delivery notification was missed)
+  //   - unsubscribed will be 0 this phase (Phase 14 populates unsubscribedAt);
+  //     it is returned so the UI can render it gracefully.
+  public async countEngagement(
+    churchId: string,
+    campaignId: string
+  ): Promise<{ opened: number; clicked: number; bounced: number; complained: number; unsubscribed: number; delivered: number }> {
+    const row = await getDb().selectFrom("campaignRecipients")
+      .select((eb) => [
+        eb.fn.sum(sql<number>`CASE WHEN openedAt IS NOT NULL THEN 1 ELSE 0 END`).as("opened"),
+        eb.fn.sum(sql<number>`CASE WHEN clickedAt IS NOT NULL THEN 1 ELSE 0 END`).as("clicked"),
+        eb.fn.sum(sql<number>`CASE WHEN bouncedAt IS NOT NULL THEN 1 ELSE 0 END`).as("bounced"),
+        eb.fn.sum(sql<number>`CASE WHEN status = 'complained' THEN 1 ELSE 0 END`).as("complained"),
+        eb.fn.sum(sql<number>`CASE WHEN unsubscribedAt IS NOT NULL THEN 1 ELSE 0 END`).as("unsubscribed"),
+        eb.fn.sum(sql<number>`CASE WHEN status IN ('delivered','sent') OR openedAt IS NOT NULL OR clickedAt IS NOT NULL THEN 1 ELSE 0 END`).as("delivered")
+      ])
+      .where("churchId", "=", churchId)
+      .where("campaignId", "=", campaignId)
+      .executeTakeFirst();
+    return {
+      opened: Number((row as any)?.opened ?? 0),
+      clicked: Number((row as any)?.clicked ?? 0),
+      bounced: Number((row as any)?.bounced ?? 0),
+      complained: Number((row as any)?.complained ?? 0),
+      unsubscribed: Number((row as any)?.unsubscribed ?? 0),
+      delivered: Number((row as any)?.delivered ?? 0)
+    };
+  }
+
   // Webhook tenancy lookup — resolve a provider message id back to its recipient.
   public async loadByProviderMessageId(churchId: string, providerMessageId: string): Promise<CampaignRecipient> {
     const row = await getDb().selectFrom("campaignRecipients").selectAll()

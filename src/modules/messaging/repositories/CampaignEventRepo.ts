@@ -50,6 +50,39 @@ export class CampaignEventRepo {
     return rows.map((r) => this.rowToModel(r));
   }
 
+  // ── Per-link click aggregation (TRK-05) — compute-on-read ──
+  //
+  // Group Click events by their target URL and count. The click target lives inside
+  // the raw SES payload (payloadJson.click.link), so we SELECT the raw payloadJson
+  // for church+campaign Click rows and group in JS: MySQL JSON-path portability is a
+  // rabbit hole and per-campaign click volume is small, so a JS Map is simpler and
+  // safe. Falsy links are dropped. Returns {link,count}[] sorted by count desc.
+  // Redelivery-safe by construction: campaignEvents is idempotent on providerEventId
+  // (13-01), so a duplicate SNS Click is never a second row and never inflates a count.
+  public async countClicksByLink(churchId: string, campaignId: string): Promise<{ link: string; count: number }[]> {
+    const rows = await getDb().selectFrom("campaignEvents")
+      .select(["payloadJson"])
+      .where("churchId", "=", churchId)
+      .where("campaignId", "=", campaignId)
+      .where("eventType", "=", "Click")
+      .execute();
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      let link: string | undefined;
+      try {
+        const payload = JSON.parse((r as any).payloadJson ?? "{}");
+        link = payload?.click?.link;
+      } catch {
+        link = undefined;
+      }
+      if (!link) continue;
+      counts.set(link, (counts.get(link) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([link, count]) => ({ link, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
   private rowToModel(row: any): CampaignEvent {
     if (!row) return null;
     return {
