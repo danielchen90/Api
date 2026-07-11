@@ -111,6 +111,10 @@ export class EmailCampaignRepo {
       subject: model.subject,
       renderedHtml: model.renderedHtml,
       renderedText: model.renderedText,
+      // Persist the frozen-audience size on the OCC edit path (freeze sets this).
+      // Without it, updateWithVersion never wrote recipientCount so the confirm
+      // dialog read "0 people" and progress read "X of 0".
+      ...(model.recipientCount !== undefined ? { recipientCount: model.recipientCount } : {}),
       updatedAt: sql`NOW()` as any,
       version: sql`version + 1` as any
     })

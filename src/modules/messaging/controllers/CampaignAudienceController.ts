@@ -100,7 +100,7 @@ export class CampaignAudienceController extends MessagingBaseController {
       //    re-freeze / concurrent freeze sees a stale version → 0n → 409. Persist
       //    audienceFilterJson as the record-of-intent.
       const bumped = await this.repos.emailCampaign.updateWithVersion(
-        { ...campaign, id, churchId: au.churchId, status: "scheduled", audienceFilterJson: JSON.stringify(descriptor) },
+        { ...campaign, id, churchId: au.churchId, status: "scheduled", audienceFilterJson: JSON.stringify(descriptor), recipientCount: rows.length },
         expectedVersion
       );
       if (bumped === 0n) return this.json({ error: "conflict" }, 409);
