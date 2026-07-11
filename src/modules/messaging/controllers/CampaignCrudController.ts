@@ -30,6 +30,11 @@ import { Environment } from "../../../shared/helpers/Environment.js";
 @controller("/messaging/campaigns")
 export class CampaignCrudController extends MessagingBaseController {
 
+  // The single SES sending domain (email-provider-is-ses memory: huro.church sends
+  // on Amazon SES). saveSettings enforces fromEmail is on this domain (WRONG_DOMAIN).
+  // Moved here with the settings handlers (route-collision fix).
+  private static readonly SENDING_DOMAIN = "huro.church";
+
   // ── BLD-02: reusable-template save/list/get seam ──
   // Declared FIRST so the LITERAL "/templates" routes register before the "/:id"
   // catch-all (inversify-express-utils = declaration order, Express = first match
@@ -132,6 +137,71 @@ export class CampaignCrudController extends MessagingBaseController {
     });
   }
 
+  // ── DLV-02: from-identity settings + sending-domain status ──
+  // MOVED here from EmailCampaignController (route-collision fix): these LITERAL
+  // single-segment routes ("/settings", "/domain-status") MUST register before the
+  // "/:id" catch-all below, or the param route swallows them as a campaign id →
+  // load() null → 404. inversify-express-utils registers a controller's methods in
+  // DECLARATION order and Express matches first-registered-wins; declaring them here
+  // (before "/:id") guarantees the static routes win. Paths/perms/codes are IDENTICAL
+  // to the previous EmailCampaignController versions (the B1Admin client calls these
+  // exact bare paths + machine codes — no client change). The reserved-literal guards
+  // in the "/:id" handlers below additionally list "settings"/"domain-status" as
+  // belt-and-suspenders against a future re-order.
+
+  // DLV-02 — read the church from-identity.
+  @httpGet("/settings")
+  public async getSettings(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
+      return this.json((await this.repos.churchEmailSettings.loadByChurch(au.churchId)) ?? {});
+    });
+  }
+
+  // DLV-02 — upsert the church from-identity. Send gate + strict validation.
+  @httpPost("/settings")
+  public async saveSettings(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
+
+      // Sanitize fromName — strip CR/LF (header injection, Pitfall 6).
+      const fromName = (req.body?.fromName ?? "").replace(/[\r\n]+/g, " ").trim();
+      const fromEmail = (req.body?.fromEmail ?? "").trim();
+      const replyTo = (req.body?.replyTo ?? "").trim();
+
+      // fromEmail must be a valid address ON the configured sending domain.
+      if (!CampaignCrudController.isValidEmail(fromEmail)) {
+        return this.json({ error: "invalid_from_email", code: "INVALID_FROM_EMAIL" }, 422);
+      }
+      if (CampaignCrudController.domainOf(fromEmail) !== CampaignCrudController.SENDING_DOMAIN) {
+        return this.json({ error: "from_email_wrong_domain", code: "WRONG_DOMAIN" }, 422);
+      }
+      // replyTo, if set, must be a valid address (any domain).
+      if (replyTo && !CampaignCrudController.isValidEmail(replyTo)) {
+        return this.json({ error: "invalid_reply_to", code: "INVALID_REPLY_TO" }, 422);
+      }
+
+      const saved = await this.repos.churchEmailSettings.upsert(au.churchId, {
+        fromName: fromName || undefined,
+        fromEmail,
+        replyTo: replyTo || undefined
+      });
+      return this.json(saved);
+    });
+  }
+
+  // DLV-02 — sending-status banner data (Plan 03 banner).
+  @httpGet("/domain-status")
+  public async domainStatus(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
+      const settings = await this.repos.churchEmailSettings.loadByChurch(au.churchId);
+      if (!settings || !settings.fromEmail) return this.json({ sendable: false, reason: "no-email-settings" });
+      const domain = CampaignCrudController.domainOf(settings.fromEmail);
+      return this.json(await VerifiedDomainGate.status(domain));
+    });
+  }
+
   // ── SND-03: list draft + sent campaigns for the campaign list page ──
   // Newest-first, church-scoped. Returns the list-card fields (id/name/subject/
   // status/campusId/createdBy/createdAt + rollup counters). loadRecent is
@@ -171,7 +241,7 @@ export class CampaignCrudController extends MessagingBaseController {
   public async get(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed
-      if (id === "templates") return this.json({ error: "not_found" }, 404); // reserved literal
+      if (id === "templates" || id === "settings" || id === "domain-status") return this.json({ error: "not_found" }, 404); // reserved literals (their own handlers win by declaration order)
       const campaign = await this.repos.emailCampaign.load(au.churchId, id);
       if (!campaign) return this.json({ error: "not_found" }, 404);
       return campaign;
@@ -221,7 +291,7 @@ export class CampaignCrudController extends MessagingBaseController {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
 
-      if (id === "templates" || id === "upload-image") return this.json({ error: "not_found" }, 404); // reserved literals (their own handlers win by declaration order)
+      if (id === "templates" || id === "upload-image" || id === "settings" || id === "domain-status") return this.json({ error: "not_found" }, 404); // reserved literals (their own handlers win by declaration order)
       const b = req.body ?? {};
       const expectedVersion: number = b.expectedVersion;
 
