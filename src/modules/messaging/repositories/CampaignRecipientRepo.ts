@@ -124,6 +124,24 @@ export class CampaignRecipientRepo {
     return this.rowToModel(row);
   }
 
+  // ── The ONE deliberately cross-tenant read on this repo ──
+  //
+  // The anonymous SNS/SES tracking webhook (Phase 13) has NO churchId — SES tells
+  // us only the provider messageId. This resolves the TENANT *from* the recipient
+  // row (churchId is the RESULT, never an input). Mirrors the deliberate
+  // cross-tenant EmailCampaignRepo.loadAllByStatus scheduler read. Backed by the
+  // single-column idx_campaignRecipients_providerMsg (2026-07-11 migration), since
+  // the churchId-first index cannot optimize a churchId-less lookup. Returns
+  // undefined on a miss so the webhook can drop (200) an event for an unknown /
+  // test-send / expired message rather than 500. Do NOT add a churchId filter here
+  // — that is the point; every OTHER read on this repo filters churchId FIRST.
+  public async loadByProviderMessageIdAnyChurch(providerMessageId: string): Promise<CampaignRecipient | undefined> {
+    const row = await getDb().selectFrom("campaignRecipients").selectAll()
+      .where("providerMessageId", "=", providerMessageId)
+      .executeTakeFirst();
+    return row ? this.rowToModel(row) : undefined;
+  }
+
   // ── Guarded engagement update (church + id) ──
   //
   // Send-result + tracking stamps. Only the fields passed in are set (partial
