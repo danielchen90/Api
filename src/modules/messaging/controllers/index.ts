@@ -15,4 +15,5 @@ export { SavedAudienceController } from "./SavedAudienceController.js";
 export { CampaignAudienceController } from "./CampaignAudienceController.js";
 export { EmailCampaignController } from "./EmailCampaignController.js";
 export { CampaignCrudController } from "./CampaignCrudController.js";
+export { SnsTrackingController } from "./SnsTrackingController.js";
 export { WebPushController } from "./WebPushController.js";
