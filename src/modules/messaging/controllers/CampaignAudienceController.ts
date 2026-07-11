@@ -38,10 +38,20 @@ export class CampaignAudienceController extends MessagingBaseController {
       if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed (Phase 11 auth fix)
       const descriptor = req.body; // {type,targetId?,filterJson?} — passed straight to the seam
       const resolved = await RecipientResolver.resolve(au, this.repos, descriptor);
+      // Return the actual deliverable roster (name + email + campus) — not just the
+      // count — so the Audience tab can show exactly WHO the campaign reaches, for
+      // ANY audience type. The rows are already campus-scoped by the resolver.
+      const recipients = resolved.deliverable.map((r) => {
+        const md = r.mergeData ?? {};
+        const name =
+          (md.displayName || [md.firstName, md.lastName].filter(Boolean).join(" ")).trim() || r.email;
+        return { personId: r.personId, name, email: r.email, campusName: md.campusName || "" };
+      });
       return {
         deliverableCount: resolved.deliverable.length,
         skippedNoEmailCount: resolved.skippedNoEmail.length,
-        suppressedCount: resolved.suppressed.length
+        suppressedCount: resolved.suppressed.length,
+        recipients
       };
     });
   }
