@@ -15,12 +15,17 @@ export class SesEmailDeliveryProvider implements IEmailDeliveryProvider {
       // Pitfall 5: SES v1 has NO client idempotency token — do NOT invent one.
       // campaignId/recipientId are for FUTURE SNS correlation (Phase 13); the
       // exactly-once guarantee is the DB row-claim in Plan 02, NOT the transport.
-      // ConfigurationSetName (for SNS event publishing) will be attached in P13 —
-      // left off here on purpose.
+      // TRK-02/TRK-05 (Phase 13, Plan 02): naming a configuration set is what makes
+      // SES publish Open/Click/Delivery/Bounce/Complaint events to the SNS topic the
+      // /messaging/tracking/sns webhook ingests (RESEARCH Pitfall 7 — WITHOUT a config
+      // set, open/click events are NEVER emitted). Env-driven (SES_CONFIGURATION_SET,
+      // provisioned per SES-SNS-TRACKING-RUNBOOK.md). Conditionally spread so an UNSET
+      // env var degrades to a plain send instead of a 400 "config set does not exist".
       const out = await this.ses.send(new SendEmailCommand({
         Source: r.from,
         Destination: { ToAddresses: [r.to] },
         ReplyToAddresses: r.replyTo ? [r.replyTo] : undefined,
+        ...(process.env.SES_CONFIGURATION_SET ? { ConfigurationSetName: process.env.SES_CONFIGURATION_SET } : {}),
         Message: {
           Subject: { Charset: "UTF-8", Data: r.subject },
           // DLV-05: pass BOTH an HTML part and a plain-text part. SES assembles
