@@ -64,8 +64,10 @@ export const createApp = async () => {
       // Lambda-specific body parsing for @codegenie/serverless-express
       app.use((req, _res, next) => {
         const contentType = req.headers["content-type"] || "";
-        // Check if this is a webhook endpoint that needs raw body
-        const isWebhookEndpoint = req.path.includes("/donate/webhook/");
+        // Check if this is a webhook endpoint that needs raw body. The SNS/SES
+        // tracking webhook (Phase 13) POSTs text/plain and its signature is
+        // computed over the RAW bytes — JSON-parsing here would break verification.
+        const isWebhookEndpoint = req.path.includes("/donate/webhook/") || req.path.includes("/messaging/tracking/");
 
         // Mark request as already having body parsed to prevent further body parsing attempts
         (req as any)._body = true;
@@ -116,6 +118,15 @@ export const createApp = async () => {
       app.use(
         "/giving/donate/webhook/*",
         bodyParser.raw({ type: "application/json" })
+      );
+
+      // SNS/SES tracking webhook (Phase 13) — SNS sends Content-Type
+      // text/plain; charset=UTF-8 (Pitfall 4), so match ALL content types
+      // (type: () => true), NOT "application/json", or the raw body never
+      // captures and signature verification fails.
+      app.use(
+        "/messaging/tracking/*",
+        bodyParser.raw({ type: () => true })
       );
 
       // Standard JSON parsing for all other endpoints
