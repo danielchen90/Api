@@ -72,6 +72,25 @@ export class CampaignSendWorker {
         const won = await repos.campaignRecipient.claimForSending(campaign.churchId, recipient.id);
         if (!won) continue;
 
+        // CMP-02 send-time gate (RESEARCH Pitfall 3): the frozen row is a point-in-time
+        // snapshot. A person who unsubscribed / hard-bounced AFTER freeze is still in the
+        // frozen list — re-check suppression AFTER winning the claim, immediately before
+        // dispatch. The suppression store is church-wide keyed on email. DECISION
+        // (RESEARCH Open Q1): reuse status:"failed" + errorMessage:"suppressed" (no
+        // enum/migration touch — a dedicated recipient status was rejected as not worth a
+        // schema change this phase; the row stays operator-visible via errorMessage). The
+        // failed-write is safe post-claim (row is already pending→sending, so exactly-once
+        // holds). Do NOT increment `attempted` — a suppressed row is never dispatched.
+        if (await repos.emailSuppression.isSuppressed(campaign.churchId, recipient.email)) {
+          await repos.campaignRecipient.updateStatus(campaign.churchId, recipient.id, {
+            status: "failed",
+            errorMessage: "suppressed"
+          });
+          failed++; // count it as a non-send so rollups/UI reflect it
+          batchFailed++;
+          continue; // NEVER provider.send a suppressed address
+        }
+
         attempted++;
 
         // Render per-recipient at send time through the ONE shared renderer
