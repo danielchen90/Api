@@ -2,6 +2,7 @@ import { controller, httpPost, httpGet } from "inversify-express-utils";
 import express from "express";
 import { MessagingBaseController } from "./MessagingBaseController.js";
 import { UnsubscribeTokenHelper } from "../helpers/UnsubscribeTokenHelper.js";
+import { Repos } from "../repositories/index.js";
 
 // ── Public, no-login preference / unsubscribe center (Phase 14, CMP-01 / CMP-05) ──
 //
@@ -30,6 +31,22 @@ import { UnsubscribeTokenHelper } from "../helpers/UnsubscribeTokenHelper.js";
 @controller("/messaging/unsubscribe")
 export class UnsubscribeController extends MessagingBaseController {
 
+  // Hydrate this.repos for a RAW-express handler.
+  //
+  // BUG (Phase 14, live): this.repos is populated ONLY inside actionWrapper/
+  // actionWrapperAnon (BaseController). These endpoints deliberately use raw
+  // express req/res with NO actionWrapper (the token IS the auth), so this.repos
+  // was `undefined` and the FIRST repo call — isSuppressed() on a VALID token —
+  // threw `Cannot read properties of undefined (reading 'emailSuppression')`,
+  // hitting the catch and rendering "Something went wrong" for a good link.
+  // (An invalid token short-circuits at verify()→null BEFORE any repo call, so it
+  // still rendered "Link expired" — which is why only real tokens broke.)
+  // getRepos() delegates to RepoManager; getDb() itself is a module-level
+  // KyselyPool singleton independent of DI, so this is a plain hydration.
+  private async hydrateRepos(): Promise<void> {
+    if (!this.repos) this.repos = await this.getRepos<Repos>();
+  }
+
   // Inline HTML shell — Huro navy/gold, centered, self-contained (no app CSS).
   private page(title: string, body: string): string {
     return (
@@ -53,6 +70,7 @@ export class UnsubscribeController extends MessagingBaseController {
       const payload = UnsubscribeTokenHelper.verify(req.query.token as string);
       // Do NOT read the POST body — the URL token is sufficient (RFC 8058 §4).
       if (payload) {
+        await this.hydrateRepos();
         const { churchId, email, campaignId } = payload;
         await this.repos.emailSuppression.add({ churchId, email, reason: "unsubscribe", sourceCampaignId: campaignId });
       }
@@ -74,6 +92,7 @@ export class UnsubscribeController extends MessagingBaseController {
         return;
       }
 
+      await this.hydrateRepos();
       const { churchId, email } = payload;
       const token = encodeURIComponent(req.query.token as string);
       const suppressed = await this.repos.emailSuppression.isSuppressed(churchId, email);
@@ -119,6 +138,7 @@ export class UnsubscribeController extends MessagingBaseController {
         res.status(200).send(this.page("Link expired", `<p style="color:#6B7280;">This link is no longer valid.</p>`));
         return;
       }
+      await this.hydrateRepos();
       const { churchId, email } = payload;
       // Reason-scoped: undoes ONLY reason="unsubscribe" — never bounce/complaint (Plan 01).
       await this.repos.emailSuppression.remove(churchId, email, ["unsubscribe"]);
