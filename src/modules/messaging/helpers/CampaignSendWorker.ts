@@ -1,7 +1,9 @@
 import { VerifiedDomainGate } from "./VerifiedDomainGate.js";
 import { SesEmailDeliveryProvider } from "./SesEmailDeliveryProvider.js";
 import { CampaignRenderHelper, CampaignRenderContext } from "./CampaignRenderHelper.js";
+import { UnsubscribeTokenHelper } from "./UnsubscribeTokenHelper.js";
 import { EmailCampaign, CampaignRecipient } from "../models/index.js";
+import { Environment } from "../../../shared/helpers/Environment.js";
 
 // The DB-as-queue send drain (Phase 11, Plan 02). A near-copy of
 // WebhookDeliveryWorker.process(repos): claim → render → send → mark → count,
@@ -100,7 +102,19 @@ export class CampaignSendWorker {
         // campus / ordination keys once plan 12-02 enriches the freeze). Footer
         // context is derived from that SAME frozen snapshot (below), so the send
         // worker needs no membership-repo/HTTP lookup it cannot cheaply do here.
-        const mergeData = CampaignSendWorker.mergeData(recipient);
+        // CMP-01 — per-recipient signed one-click unsubscribe URL. Base is the PUBLIC
+        // Api /messaging root (Environment.messagingApi = ${API_URL}/messaging, absolute
+        // on Railway). The controller (Plan 04) lives at /messaging/unsubscribe/one-click.
+        // If Environment.messagingApi is empty in some config the URL degrades to a
+        // relative path — acceptable this phase (the link still works same-origin), but
+        // confirm API_URL is set on the Api service (SUMMARY follow-up).
+        const unsubToken = UnsubscribeTokenHelper.create(campaign.churchId, recipient.email, campaign.id);
+        const unsubscribeUrl = `${Environment.messagingApi}/unsubscribe/one-click?token=${unsubToken}`;
+
+        // Inject the real signed URL into the render so the FOOTER anchor
+        // href="{{unsubscribeUrl}}" resolves (CampaignRenderHelper prefers
+        // mergeData.unsubscribeUrl over its #unsubscribe-pending placeholder — Plan 01).
+        const mergeData = { ...CampaignSendWorker.mergeData(recipient), unsubscribeUrl };
         const context = CampaignSendWorker.renderContext(mergeData);
         const result = await CampaignRenderHelper.render(campaign, mergeData, context);
 
@@ -112,7 +126,8 @@ export class CampaignSendWorker {
           html: result.html,
           text: result.text,
           campaignId: campaign.id,
-          recipientId: recipient.id
+          recipientId: recipient.id,
+          listUnsubscribeUrl: unsubscribeUrl // ← CMP-01 header (same URL as the in-body link)
         });
 
         if (sent.success) {
