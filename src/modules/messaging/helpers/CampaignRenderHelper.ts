@@ -9,8 +9,11 @@ import { EmailCampaign } from "../models/index.js";
 //   1. base body   = campaign.renderedHtml (Unlayer export, already stored)
 //   2. STRIP       = defensively remove any trailing Unlayer branding block
 //   3. FOOTER      = append the non-removable CAN-SPAM/Huro footer (with the
-//                    reserved {{unsubscribeUrl}} placeholder slot — Phase 14 swaps
-//                    in the real one-click URL)
+//                    reserved {{unsubscribeUrl}} slot). Phase 14's CampaignSendWorker
+//                    now injects a real signed one-click URL via
+//                    mergeData.unsubscribeUrl at send time; the placeholder is the
+//                    benign fallback ONLY for preview/test-send (no per-recipient
+//                    token minted there).
 //   4. MERGE       = MergeFieldHelper.resolve over html + subject + preheader
 //   5. TEXT PART   = derive a plain-text part from the merged html (DLV-05: a text
 //                    part MUST always exist)
@@ -38,10 +41,13 @@ export interface CampaignRenderResult {
 
 export class CampaignRenderHelper {
 
-  // The placeholder value the reserved {{unsubscribeUrl}} slot resolves to NOW.
-  // Phase 14 replaces this with the real one-click List-Unsubscribe URL. Merging
-  // it (rather than leaving a raw token) means the sent HTML never leaks a literal
-  // `{{unsubscribeUrl}}` — it carries a benign anchor href.
+  // The fallback value the reserved {{unsubscribeUrl}} slot resolves to WHEN no
+  // real URL is supplied. Phase 14's CampaignSendWorker injects the real signed
+  // one-click List-Unsubscribe URL via mergeData.unsubscribeUrl at send time (see
+  // the `dataWithUnsub` spread below — a real URL WINS over this placeholder). The
+  // placeholder therefore remains ONLY as the benign fallback for preview/test-send
+  // where no per-recipient token is minted. Merging a value (rather than leaving a
+  // raw token) means the sent HTML never leaks a literal `{{unsubscribeUrl}}`.
   private static readonly UNSUBSCRIBE_PLACEHOLDER = "#unsubscribe-pending";
 
   static async render(
@@ -61,9 +67,11 @@ export class CampaignRenderHelper {
     // 3. Append the non-removable compliant footer AFTER the strip.
     const footered = stripped + CampaignRenderHelper.buildFooter(context);
 
-    // Reserve the {{unsubscribeUrl}} slot with a placeholder so the merge pass
-    // leaves a benign value (Phase 14 swaps the real URL). Person/church/campus
-    // keys already live in mergeData; add the placeholder without mutating caller.
+    // Resolve the {{unsubscribeUrl}} slot: PREFER a real signed URL supplied by the
+    // caller (Plan 03's CampaignSendWorker sets mergeData.unsubscribeUrl per
+    // recipient) and fall back to the benign placeholder only when absent
+    // (preview/test-send). Person/church/campus keys already live in mergeData; add
+    // the resolved unsubscribeUrl without mutating the caller's object.
     const dataWithUnsub: Record<string, string | undefined> = {
       ...mergeData,
       unsubscribeUrl: mergeData.unsubscribeUrl ?? CampaignRenderHelper.UNSUBSCRIBE_PLACEHOLDER
