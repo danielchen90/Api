@@ -19,6 +19,10 @@ export interface EmailSendRequest {
   text: string;
   campaignId: string;
   recipientId: string;
+  // CMP-01 — when present, the transport sets RFC 8058 List-Unsubscribe +
+  // List-Unsubscribe-Post:One-Click headers. Absent → a plain send
+  // (transactional callers / test-sends never set it).
+  listUnsubscribeUrl?: string;
 }
 
 // The transport's verdict for ONE send. `retryable` lets the Plan 02 worker
