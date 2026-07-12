@@ -102,18 +102,32 @@ export class CampaignSendWorker {
         // campus / ordination keys once plan 12-02 enriches the freeze). Footer
         // context is derived from that SAME frozen snapshot (below), so the send
         // worker needs no membership-repo/HTTP lookup it cannot cheaply do here.
-        // CMP-01 — per-recipient signed one-click unsubscribe URL. Base is the PUBLIC
-        // Api /messaging root (Environment.messagingApi = ${API_URL}/messaging, absolute
-        // on Railway). The controller (Plan 04) lives at /messaging/unsubscribe/one-click.
-        // If Environment.messagingApi is empty in some config the URL degrades to a
-        // relative path — acceptable this phase (the link still works same-origin), but
-        // confirm API_URL is set on the Api service (SUMMARY follow-up).
+        // CMP-01 — per-recipient signed unsubscribe URLs. Base is the PUBLIC Api
+        // /messaging root (Environment.messagingApi = ${API_URL}/messaging, absolute on
+        // Railway). If Environment.messagingApi is empty in some config the URLs degrade
+        // to relative paths — acceptable this phase (the links still work same-origin),
+        // but confirm API_URL is set on the Api service (SUMMARY follow-up).
+        //
+        // METHOD-SPLIT (14-05 checkpoint-found fix): mint the signed token ONCE, then
+        // build TWO URLs from that SAME token — they differ ONLY in path, because they
+        // are hit with DIFFERENT HTTP METHODS:
+        //   • HEADER (List-Unsubscribe, RFC 8058) → POST /unsubscribe/one-click. Gmail's
+        //     native "Unsubscribe" button POSTs this URL; the controller registers
+        //     one-click as @httpPost ONLY.
+        //   • FOOTER (in-body <a href>) → GET /unsubscribe/?token=. A human CLICKING the
+        //     footer link issues a GET; one-click is POST-only, so pointing the footer at
+        //     it 404s BY DESIGN (the operator's browser-paste 404). The GET preference
+        //     page (@httpGet("/")) renders the Huro page with a working unsubscribe-from-
+        //     all form + resubscribe (Plan 04), completing the human flow end-to-end.
         const unsubToken = UnsubscribeTokenHelper.create(campaign.churchId, recipient.email, campaign.id);
-        const unsubscribeUrl = `${Environment.messagingApi}/unsubscribe/one-click?token=${unsubToken}`;
+        // Header → POST one-click (machine); footer → GET preference page (human).
+        const listUnsubscribeUrl = `${Environment.messagingApi}/unsubscribe/one-click?token=${unsubToken}`;
+        const unsubscribeUrl = `${Environment.messagingApi}/unsubscribe/?token=${unsubToken}`;
 
-        // Inject the real signed URL into the render so the FOOTER anchor
-        // href="{{unsubscribeUrl}}" resolves (CampaignRenderHelper prefers
-        // mergeData.unsubscribeUrl over its #unsubscribe-pending placeholder — Plan 01).
+        // Inject the human-facing GET URL into the render so the FOOTER anchor
+        // href="{{unsubscribeUrl}}" resolves to a page a browser can actually open
+        // (CampaignRenderHelper prefers mergeData.unsubscribeUrl over its
+        // #unsubscribe-pending placeholder — Plan 01).
         const mergeData = { ...CampaignSendWorker.mergeData(recipient), unsubscribeUrl };
         const context = CampaignSendWorker.renderContext(mergeData);
         const result = await CampaignRenderHelper.render(campaign, mergeData, context);
@@ -127,7 +141,7 @@ export class CampaignSendWorker {
           text: result.text,
           campaignId: campaign.id,
           recipientId: recipient.id,
-          listUnsubscribeUrl: unsubscribeUrl // ← CMP-01 header (same URL as the in-body link)
+          listUnsubscribeUrl // ← CMP-01 RFC 8058 header → POST /one-click (Gmail's button)
         });
 
         if (sent.success) {
