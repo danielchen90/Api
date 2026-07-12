@@ -37,6 +37,24 @@ export class EmailSuppressionRepo {
     }
   }
 
+  // ── Delete: resubscribe (member opt-back-in) ──
+  //
+  // Removes suppression rows for (churchId, email) whose reason is in `reasons`.
+  // DECISION (RESEARCH Open Q3 + Pitfall 6): default reasons=["unsubscribe"] so a
+  // resubscribe undoes ONLY the member's own opt-out. It MUST NOT clear
+  // reason="bounce" or "complaint" — those are DELIVERABILITY FACTS (a hard-bounced
+  // or complaining address is dead; re-enabling it damages sender reputation). The
+  // `reasons` param is filtered into the WHERE, so the default can never
+  // accidentally un-suppress a bounce/complaint. Returns the delete count.
+  public async remove(churchId: string, email: string, reasons: string[] = ["unsubscribe"]): Promise<number> {
+    const res = await getDb().deleteFrom("emailSuppression")
+      .where("churchId", "=", churchId)
+      .where("email", "=", email)
+      .where("reason", "in", reasons)
+      .executeTakeFirst();
+    return Number(res.numDeletedRows ?? 0n);
+  }
+
   // ── Reads: churchId filter FIRST ──
 
   // Send-time gate — true if this email is suppressed for the church.
