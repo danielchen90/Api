@@ -202,6 +202,37 @@ export class CampaignCrudController extends MessagingBaseController {
     });
   }
 
+  // ── SND-04: church scheduling timezone (drives the B1Admin picker) ──
+  // A small READ-ONLY endpoint so B1Admin's scheduled-send picker can LABEL the
+  // instant in — and convert church-local wall-clock → UTC before POSTing to
+  // /:id/schedule against — the church's configured timezone.
+  //
+  // Route-collision guard (project memory + RESEARCH Pitfall 3): CampaignCrud owns
+  // the "/:id" catch-all, and inversify-express-utils + Express match
+  // first-registered-wins, so this LITERAL "/timezone" route MUST be declared
+  // BEFORE "/:id" (it is), AND "timezone" is added to the reserved-literals guard in
+  // the "/:id" GET handler below as belt-and-suspenders.
+  //
+  // Resolution (LIVE-DB investigation, do NOT re-litigate — RESEARCH): there is NO
+  // church-level timezone field, no "timezone" Setting row, and only 1/25 campuses
+  // has a real Campus.timezone. The messaging module (this controller's Repos
+  // bundle + DB schema) exposes NO generic settings table, so per the plan we return
+  // the DateHelper default ("America/New_York") — a church-wide single zone, the
+  // correct model since campaigns are church-scoped (not campus-scoped). A church
+  // wanting a different zone can have a seeded row surface here in a future phase;
+  // this keeps every church working immediately with a definite string. NO write
+  // endpoint this phase (admin tz config UI is out of scope).
+  @httpGet("/timezone")
+  public async timezone(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed, READ action
+      // Church-wide scheduling zone. Default (DateHelper) — no church-level tz field
+      // exists in the messaging schema; this is the definite fallback every church gets.
+      const resolvedTz = "America/New_York";
+      return this.json({ timezone: resolvedTz }, 200);
+    });
+  }
+
   // ── SND-03: list draft + sent campaigns for the campaign list page ──
   // Newest-first, church-scoped. Returns the list-card fields (id/name/subject/
   // status/campusId/createdBy/createdAt + rollup counters). loadRecent is
@@ -241,7 +272,7 @@ export class CampaignCrudController extends MessagingBaseController {
   public async get(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed
-      if (id === "templates" || id === "settings" || id === "domain-status") return this.json({ error: "not_found" }, 404); // reserved literals (their own handlers win by declaration order)
+      if (id === "templates" || id === "settings" || id === "domain-status" || id === "timezone") return this.json({ error: "not_found" }, 404); // reserved literals (their own handlers win by declaration order)
       const campaign = await this.repos.emailCampaign.load(au.churchId, id);
       if (!campaign) return this.json({ error: "not_found" }, 404);
       return campaign;
@@ -291,7 +322,7 @@ export class CampaignCrudController extends MessagingBaseController {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
 
-      if (id === "templates" || id === "upload-image" || id === "settings" || id === "domain-status") return this.json({ error: "not_found" }, 404); // reserved literals (their own handlers win by declaration order)
+      if (id === "templates" || id === "upload-image" || id === "settings" || id === "domain-status" || id === "timezone") return this.json({ error: "not_found" }, 404); // reserved literals (their own handlers win by declaration order)
       const b = req.body ?? {};
       const expectedVersion: number = b.expectedVersion;
 
