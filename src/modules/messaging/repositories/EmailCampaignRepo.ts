@@ -83,6 +83,24 @@ export class EmailCampaignRepo {
     return rows.map((r) => this.rowToModel(r));
   }
 
+  // Due scheduled campaigns for the RailwayCron scheduled poller (cross-tenant,
+  // like loadAllByStatus — NO churchId filter; the poller runs across all
+  // churches). Filters status = "scheduled" + scheduledAt <= now (a null
+  // scheduledAt never matches, so drafts are excluded automatically) + removed
+  // = false. Rides the pre-provisioned composite index
+  // idx_emailCampaigns_church_status_scheduled on (churchId, status,
+  // scheduledAt). scheduledAt is a UTC instant; NOW() is UTC on Railway. The
+  // worker OCC-claims each row scheduled→sending with its OWN churchId in the
+  // guard, so this cross-tenant read never leaks tenancy on the write.
+  public async loadDueScheduled(now: Date): Promise<EmailCampaign[]> {
+    const rows = await getDb().selectFrom("emailCampaigns").selectAll()
+      .where("status", "=", "scheduled")
+      .where("scheduledAt", "<=", now)
+      .where("removed", "=", false)
+      .execute();
+    return rows.map((r) => this.rowToModel(r));
+  }
+
   // Recent campaigns, newest-first — church-scoped (list picker). selectAll is
   // fine for this foundation; a body-omitting list read can be added later.
   public async loadRecent(churchId: string, limit = 20): Promise<EmailCampaign[]> {
