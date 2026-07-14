@@ -250,6 +250,7 @@ export class CampaignCrudController extends MessagingBaseController {
         campusId: (c as any).campusId,
         createdBy: c.createdBy,
         createdAt: c.createdAt,
+        scheduledAt: (c as any).scheduledAt, // 15-03: drives the list "Scheduled for" column (null for drafts / send-now)
         recipientCount: c.recipientCount,
         sentCount: c.sentCount,
         failedCount: c.failedCount,
