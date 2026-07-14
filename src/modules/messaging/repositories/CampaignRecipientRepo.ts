@@ -154,6 +154,43 @@ export class CampaignRecipientRepo {
     };
   }
 
+  // ── Batch engagement rollup for the campaign LIST (Phase 16, RESEARCH Gap 4) ──
+  //
+  // The list page needs per-row opened/clicked/delivered for MANY campaigns at once.
+  // Doing countEngagement() per row is an N+1 (100 rows → 100 queries). This is the
+  // SAME conditional-SUM shape as countEngagement but GROUPED BY campaignId across
+  // all supplied ids in ONE round-trip, keyed back into a Record for O(1) lookup in
+  // the controller. Church-scoped (every read filters churchId FIRST). An empty
+  // campaignIds is guarded — `WHERE campaignId IN ()` is invalid SQL, so return {}
+  // WITHOUT querying. Redelivery-safe by construction (compute-on-read of the
+  // first-seen stamps; no ++ anywhere).
+  public async engagementByCampaign(
+    churchId: string,
+    campaignIds: string[]
+  ): Promise<Record<string, { opened: number; clicked: number; delivered: number }>> {
+    if (!campaignIds || campaignIds.length === 0) return {};
+    const rows = await getDb().selectFrom("campaignRecipients")
+      .select(["campaignId"])
+      .select((eb) => [
+        eb.fn.sum(sql<number>`CASE WHEN openedAt IS NOT NULL THEN 1 ELSE 0 END`).as("opened"),
+        eb.fn.sum(sql<number>`CASE WHEN clickedAt IS NOT NULL THEN 1 ELSE 0 END`).as("clicked"),
+        eb.fn.sum(sql<number>`CASE WHEN status IN ('delivered','sent') OR openedAt IS NOT NULL OR clickedAt IS NOT NULL THEN 1 ELSE 0 END`).as("delivered")
+      ])
+      .where("churchId", "=", churchId)
+      .where("campaignId", "in", campaignIds)
+      .groupBy("campaignId")
+      .execute();
+    const out: Record<string, { opened: number; clicked: number; delivered: number }> = {};
+    for (const r of rows) {
+      out[(r as any).campaignId] = {
+        opened: Number((r as any).opened ?? 0),
+        clicked: Number((r as any).clicked ?? 0),
+        delivered: Number((r as any).delivered ?? 0)
+      };
+    }
+    return out;
+  }
+
   // Webhook tenancy lookup — resolve a provider message id back to its recipient.
   public async loadByProviderMessageId(churchId: string, providerMessageId: string): Promise<CampaignRecipient> {
     const row = await getDb().selectFrom("campaignRecipients").selectAll()

@@ -242,20 +242,45 @@ export class CampaignCrudController extends MessagingBaseController {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed
       const campaigns = await this.repos.emailCampaign.loadRecent(au.churchId, 100);
-      return campaigns.map((c) => ({
-        id: c.id,
-        name: c.name,
-        subject: c.subject,
-        status: c.status,
-        campusId: (c as any).campusId,
-        createdBy: c.createdBy,
-        createdAt: c.createdAt,
-        scheduledAt: (c as any).scheduledAt, // 15-03: drives the list "Scheduled for" column (null for drafts / send-now)
-        recipientCount: c.recipientCount,
-        sentCount: c.sentCount,
-        failedCount: c.failedCount,
-        version: c.version
-      }));
+
+      // Phase 16 — sender label. The messaging module deliberately avoids cross-module
+      // People reads (RESEARCH Gap 2 Open-Q), so the sender is the church's configured
+      // from-name — a stable, correct "who it was sent as" label. Loaded ONCE for the
+      // whole list (church-scoped). A per-creator facet can come later without a
+      // cross-module lookup here.
+      const settings = await this.repos.churchEmailSettings.loadByChurch(au.churchId);
+      const sender = (settings as any)?.fromName ?? null;
+
+      // Phase 16 — batch engagement (RESEARCH Gap 4): ONE grouped aggregate for every
+      // sent/sending row (no N+1). Draft/scheduled/failed/canceled rows get NO
+      // engagement fields at all (undefined, not 0) so the client renders blank not 0%
+      // (Pitfall 4 — a CONTEXT-locked decision).
+      const sentIds = campaigns.filter((c) => c.status === "sent" || c.status === "sending").map((c) => c.id);
+      const engagementByCampaign = await this.repos.campaignRecipient.engagementByCampaign(au.churchId, sentIds);
+
+      return campaigns.map((c) => {
+        const hasEngagement = c.status === "sent" || c.status === "sending";
+        const eng = engagementByCampaign[c.id];
+        return {
+          id: c.id,
+          name: c.name,
+          subject: c.subject,
+          status: c.status,
+          campusId: (c as any).campusId,
+          createdBy: c.createdBy,
+          createdAt: c.createdAt,
+          sentAt: (c as any).sentAt, // 16-01: explicit send instant (null for draft/scheduled/failed/canceled)
+          scheduledAt: (c as any).scheduledAt, // 15-03: drives the list "Scheduled for" column (null for drafts / send-now)
+          sender, // 16-01: church from-name ("who it was sent as"); same for every row
+          recipientCount: c.recipientCount,
+          sentCount: c.sentCount,
+          failedCount: c.failedCount,
+          // Engagement ONLY for sent/sending rows — omit entirely otherwise so the UI
+          // shows blank, never 0% (Pitfall 4).
+          ...(hasEngagement ? { opened: eng?.opened ?? 0, clicked: eng?.clicked ?? 0, delivered: eng?.delivered ?? 0 } : {}),
+          version: c.version
+        };
+      });
     });
   }
 
