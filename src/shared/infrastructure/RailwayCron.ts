@@ -1,6 +1,7 @@
 import { RepoManager } from "./RepoManager.js";
 
 const FIFTEEN_SECONDS_MS = 15 * 1000;
+const THIRTY_SECONDS_MS = 30 * 1000;
 const ONE_MINUTE_MS = 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -57,6 +58,18 @@ const runCampaignSends = async (): Promise<void> => {
   await CampaignSendWorker.process(repos);
 };
 
+// Scheduled-send poller (Phase 15, SND-04) — claims due scheduled campaigns
+// scheduled→sending; the 15s runCampaignSends drain then sends them off-thread.
+// 30s cadence comfortably satisfies the 5-minute lead-time contract; the claim is
+// a cheap single indexed read + version-guarded UPDATE. Its OWN safe()-wrapped
+// interval (isolated from the send drain — a scheduled-claim failure must never
+// abort a send in flight).
+const runScheduledSends = async (): Promise<void> => {
+  const { ScheduledSendWorker } = await import("../../modules/messaging/helpers/ScheduledSendWorker.js");
+  const repos = await RepoManager.getRepos<any>("messaging");
+  await ScheduledSendWorker.process(repos);
+};
+
 export const startRailwayCron = (): void => {
   if (!process.env.RAILWAY_ENVIRONMENT) return;
 
@@ -65,6 +78,7 @@ export const startRailwayCron = (): void => {
   setInterval(() => void safe("30-min timer", runThirtyMinute), THIRTY_MINUTES_MS);
   setInterval(() => void safe("webhook deliveries", runWebhookDeliveries), ONE_MINUTE_MS);
   setInterval(() => void safe("campaign sends", runCampaignSends), FIFTEEN_SECONDS_MS);
+  setInterval(() => void safe("scheduled sends", runScheduledSends), THIRTY_SECONDS_MS);
 
   const scheduleDaily = (label: string, fn: () => Promise<void>): void => {
     setTimeout(() => {
