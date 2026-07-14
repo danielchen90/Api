@@ -8,7 +8,12 @@ export class EmailCampaign {
   public status?: string;
   public version?: number;
   public name?: string;
+  public campusId?: string;
   public scheduledAt?: Date;
+  // The instant the campaign flipped to `sent` (stamped by CampaignSendWorker at
+  // the sent flip). Distinct from createdAt (draft-creation time). Null for
+  // draft/scheduled/failed/canceled rows. (2026-07-12 migration.)
+  public sentAt?: Date;
   public audienceFilterJson?: string;
   public templateId?: string;
   public blockJson?: string;

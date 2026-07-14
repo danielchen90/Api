@@ -32,6 +32,7 @@ export class EmailCampaignRepo {
       status: model.status ?? "draft",
       version: 1,
       name: model.name,
+      campusId: model.campusId,
       scheduledAt: model.scheduledAt,
       audienceFilterJson: model.audienceFilterJson,
       templateId: model.templateId,
@@ -133,6 +134,11 @@ export class EmailCampaignRepo {
       // Without it, updateWithVersion never wrote recipientCount so the confirm
       // dialog read "0 people" and progress read "X of 0".
       ...(model.recipientCount !== undefined ? { recipientCount: model.recipientCount } : {}),
+      // Phase 16: campusId + sentAt are set-when-present so the send worker can
+      // stamp sentAt on the sent flip and a re-owned campaign can carry campusId
+      // through the OCC edit path, without clobbering either on unrelated updates.
+      ...(model.sentAt !== undefined ? { sentAt: model.sentAt } : {}),
+      ...(model.campusId !== undefined ? { campusId: model.campusId } : {}),
       updatedAt: sql`NOW()` as any,
       version: sql`version + 1` as any
     })
@@ -174,7 +180,9 @@ export class EmailCampaignRepo {
       status: row.status,
       version: Number(row.version),
       name: row.name,
+      campusId: row.campusId,
       scheduledAt: row.scheduledAt,
+      sentAt: row.sentAt,
       audienceFilterJson: row.audienceFilterJson,
       templateId: row.templateId,
       blockJson: row.blockJson,

@@ -182,7 +182,10 @@ export class CampaignSendWorker {
       // failedCount, not a separate status.
       if (counts.pending === 0 && counts.sending === 0) {
         const bumped = await repos.emailCampaign.updateWithVersion(
-          { ...campaign, status: "sent" },
+          // Phase 16: stamp the explicit sent instant AT the sent flip (this is the
+          // ONLY status transition that stamps sentAt — the history record needs the
+          // send time, distinct from createdAt).
+          { ...campaign, status: "sent", sentAt: new Date() },
           campaign.version
         );
         // A concurrent claimer (another drain / a scheduler) may have bumped the
