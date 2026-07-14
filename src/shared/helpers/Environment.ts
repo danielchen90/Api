@@ -191,7 +191,7 @@ export class Environment extends EnvironmentBase {
     // Membership API specific
     this.jwtExpiration = "2 days";
     this.emailOnRegistration = process.env.EMAIL_ON_REGISTRATION === "true" || config.emailOnRegistration === true;
-    this.supportEmail = process.env.SUPPORT_EMAIL || config.supportEmail || "support@churchapps.org";
+    this.supportEmail = process.env.SUPPORT_EMAIL || config.supportEmail || "support@huro.church";
     this.b1AdminRoot = process.env.B1ADMIN_ROOT || config.b1AdminRoot || "https://admin.staging.huro.church";
     this.mailSystem = process.env.MAIL_SYSTEM ?? config.mailSystem ?? "";
     EnvironmentBase.mailSystem = this.mailSystem;
@@ -218,7 +218,7 @@ export class Environment extends EnvironmentBase {
     this.openAiApiKey = process.env.OPENAI_API_KEY || "";
     this.webPushPublicKey = process.env.WEB_PUSH_PUBLIC_KEY || config.webPushPublicKey || "";
     this.webPushPrivateKey = process.env.WEB_PUSH_PRIVATE_KEY || "";
-    this.webPushSubject = process.env.WEB_PUSH_SUBJECT || config.webPushSubject || "mailto:support@churchapps.org";
+    this.webPushSubject = process.env.WEB_PUSH_SUBJECT || config.webPushSubject || "mailto:support@huro.church";
     this.webPushPublicKeySource = process.env.WEB_PUSH_PUBLIC_KEY ? "env" : (config.webPushPublicKey ? `config:${this.currentEnvironment}` : "missing");
     this.webPushPrivateKeySource = process.env.WEB_PUSH_PRIVATE_KEY ? "env" : "missing";
 

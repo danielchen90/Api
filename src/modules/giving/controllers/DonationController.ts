@@ -18,7 +18,7 @@ export class DonationController extends GivingBaseController {
       let error = "";
       try {
         await EmailHelper.sendEmail({
-          from: "support@churchapps.org",
+          from: "noreply@huro.church",
           to: "jeremy@livecs.org",
           subject: "Test Email",
           body: "Test Email"
