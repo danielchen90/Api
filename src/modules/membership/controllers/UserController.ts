@@ -612,12 +612,15 @@ export class UserController extends MembershipBaseController {
         isExistingUser = true;
         user.authGuid = v4();
         loginLink = `/login?auth=${user.authGuid}`;
-        await Promise.all([
-          this.repos.user.save(user),
-          UserHelper.sendInviteEmail(email, personName || "", contextName, churchName || "", loginLink, isExistingUser, inviterEmail)
-        ]);
-      } else {
+        await this.repos.user.save(user);
+      }
+
+      try {
         await UserHelper.sendInviteEmail(email, personName || "", contextName, churchName || "", loginLink, isExistingUser, inviterEmail);
+      } catch (e: any) {
+        // Surface a real failure to the admin instead of silently reporting success.
+        console.error("sendInviteEmail failed:", e?.message || e);
+        return this.json({ errors: ["The invitation could not be sent. Please check the email configuration and try again."] }, 502);
       }
 
       return this.json({ success: true }, 200);
