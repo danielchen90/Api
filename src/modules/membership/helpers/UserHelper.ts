@@ -93,7 +93,7 @@ export class UserHelper {
   }
 
   static sendWelcomeEmail(email: string, code: string, appName: string, appUrl: string): Promise<any> {
-    if (!appName) appName = "ChurchApps";
+    if (!appName) appName = "Huro";
     if (!appUrl) appUrl = Environment.b1AdminRoot;
 
     const contents =
@@ -105,7 +105,7 @@ export class UserHelper {
   }
 
   static sendInviteEmail(email: string, personName: string, contextName: string, churchName: string, loginLink: string, isExistingUser: boolean, inviterEmail?: string): Promise<any> {
-    const appName = churchName || "ChurchApps";
+    const appName = churchName || "Huro";
     const appUrl = Environment.b1AdminRoot;
     const actionLabel = isExistingUser ? "Log In" : "Sign Up";
     const subject = "You've been added to " + contextName;
@@ -118,7 +118,7 @@ export class UserHelper {
   }
 
   static sendForgotEmail(email: string, code: string, appName: string, appUrl: string): Promise<any> {
-    if (!appName) appName = "ChurchApps";
+    if (!appName) appName = "Huro";
     if (!appUrl) appUrl = Environment.b1AdminRoot;
 
     const contents =
