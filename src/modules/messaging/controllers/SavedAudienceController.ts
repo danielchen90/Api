@@ -44,6 +44,21 @@ export class SavedAudienceController extends MessagingBaseController {
     });
   }
 
+  // Update a saved audience's descriptor in place (label + audienceType +
+  // targetId + filterJson). POST-to-update (ApiHelper has no put()) — mirrors the
+  // POST /campaigns/:id house style. id comes from the ROUTE param, churchId is
+  // server-derived; neither is trusted from the body. UNPREFIXED People/View gate.
+  @httpPost("/:id")
+  public async update(@requestParam("id") id: string, req: express.Request<{}, {}, SavedAudience>, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      const model = req.body;
+      model.id = id;                 // trust the route param, NOT the body
+      model.churchId = au.churchId;  // server-derived, never the body's churchId
+      return this.repos.savedAudience.update(au.churchId, model);
+    });
+  }
+
   // Soft-delete a saved audience (church-scoped).
   @httpDelete("/:id")
   public async delete(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
