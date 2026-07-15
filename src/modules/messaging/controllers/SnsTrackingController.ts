@@ -119,7 +119,11 @@ export class SnsTrackingController extends MessagingBaseController {
           }
           break;
         case "Complaint":
-          await this.repos.campaignRecipient.updateStatus(churchId, recipientId, { status: "complained" });
+          // A complaint is an unsubscribe (Phase 17, TRK-02/TRK-03) — stamp
+          // unsubscribedAt alongside the status so it feeds countEngagement's
+          // `unsubscribed` count + the ?status=unsubscribed drill-down. Bounce does
+          // NOT stamp unsubscribedAt (a bounce is a deliverability fact, not an opt-out).
+          await this.repos.campaignRecipient.updateStatus(churchId, recipientId, { status: "complained", unsubscribedAt: ts });
           // A complaint ALWAYS suppresses (church-wide).
           await this.repos.emailSuppression.add({ churchId, email, reason: "complaint", sourceCampaignId: campaignId });
           break;

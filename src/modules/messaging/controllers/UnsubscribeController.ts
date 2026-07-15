@@ -111,6 +111,16 @@ export class UnsubscribeController extends MessagingBaseController {
       const { churchId, email, campaignId } = payload;
       await this.repos.emailSuppression.add({ churchId, email, reason: "unsubscribe", sourceCampaignId: campaignId });
 
+      // Engagement stamp (Phase 17, TRK-02/TRK-03): stamp unsubscribedAt on the
+      // matching recipient row so the per-campaign `unsubscribed` count + the
+      // ?status=unsubscribed drill-down reflect real opt-outs. A lookup miss
+      // (recip undefined) is a SAFE NO-OP — never throw, never 4xx: the one-click
+      // endpoint MUST stay 200-always (RFC 8058). Attribution: campaignId (when the
+      // token carries one) narrows to that exact send; otherwise the newest row for
+      // the address is stamped. NEVER pass the email as the row id.
+      const recip = await this.repos.campaignRecipient.loadLatestByEmail(churchId, email, campaignId);
+      if (recip?.id) await this.repos.campaignRecipient.updateStatus(churchId, recip.id, { unsubscribedAt: new Date() });
+
       // Warm, on-brand human confirmation — with a one-click Resubscribe right here.
       const token = encodeURIComponent(rawToken);
       const body =
