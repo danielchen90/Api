@@ -11,11 +11,15 @@ import { SavedAudience } from "../models/index.js";
 // by design.
 //
 // churchId is ALWAYS server-derived from `au.churchId`, never trusted from the
-// body. Gated on the UNPREFIXED People-View read for parity with the audience
-// resolver seam (RESEARCH: "gate on the same People-View UNPREFIXED read used by
-// the resolver" — see `campus-auth-perms-unprefixed` memory; EmailTemplateController
-// exposes no obvious content-type gate to reuse). A saved audience is church-wide
-// comms configuration, not campus-scoped, so no assertWritableCampus.
+// body. Gated on the UNPREFIXED MessagingApi Campaigns perm — reads on
+// Campaigns/View, writes (save/update/delete) on Campaigns/Send — mirroring the
+// working CampaignCrud/CampaignAudience controllers. These endpoints are hit by
+// the B1Admin client under the MessagingApi per-api JWT, whose permission set is
+// {Texting/Send, Campaigns/View, Campaigns/Send, Campus/Admin} and does NOT carry
+// People/View; a People/View gate here 401s every request (per-api JWTs are
+// permission-scoped — see `messaging-campaign-endpoints-use-campaigns-perm`).
+// A saved audience is church-wide comms configuration, not campus-scoped, so no
+// assertWritableCampus.
 @controller("/messaging/audiences")
 export class SavedAudienceController extends MessagingBaseController {
 
@@ -23,7 +27,7 @@ export class SavedAudienceController extends MessagingBaseController {
   @httpGet("/")
   public async getAll(req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "View" })) return this.json({}, 401); // MessagingApi-scoped, unprefixed
       return this.repos.savedAudience.loadAll(au.churchId);
     });
   }
@@ -34,7 +38,7 @@ export class SavedAudienceController extends MessagingBaseController {
   @httpPost("/")
   public async save(req: express.Request<{}, {}, SavedAudience | SavedAudience[]>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
       const items = Array.isArray(req.body) ? req.body : [req.body];
       return Promise.all(items.map((a) => {
         a.churchId = au.churchId;   // server-derived; never trust body churchId
@@ -51,7 +55,7 @@ export class SavedAudienceController extends MessagingBaseController {
   @httpPost("/:id")
   public async update(@requestParam("id") id: string, req: express.Request<{}, {}, SavedAudience>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
       const model = req.body;
       model.id = id;                 // trust the route param, NOT the body
       model.churchId = au.churchId;  // server-derived, never the body's churchId
@@ -63,7 +67,7 @@ export class SavedAudienceController extends MessagingBaseController {
   @httpDelete("/:id")
   public async delete(@requestParam("id") id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      if (!au.checkAccess({ contentType: "People", action: "View" })) return this.json({}, 401); // UNPREFIXED
+      if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
       await this.repos.savedAudience.delete(au.churchId, id);
       return this.json({});
     });
