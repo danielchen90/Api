@@ -102,17 +102,20 @@ export class CampaignCrudController extends MessagingBaseController {
   // Railway with FILE_STORE unset, contentRoot is the public base over the
   // /app/content volume, per railway-api-local-volume-storage memory). Reuse the
   // EXACT FileStorageHelper.store + Environment.contentRoot mechanism FileController
-  // uses; do NOT invent new storage. Route is :id-agnostic so it works before the
-  // draft exists (the builder can upload while composing a brand-new campaign).
-  @httpPost("/upload-image")
-  public async uploadImage(req: express.Request, res: express.Response): Promise<any> {
+  // uses; do NOT invent new storage. The route is the TWO-segment "/:id/upload-image"
+  // to MATCH the real client URL (B1Admin posts /campaigns/{id}/upload-image →
+  // POST /messaging/campaigns/{id}/upload-image); the handler is church-scoped, not
+  // campaign-scoped, so the :id param is accepted and IGNORED (bound as _id). Because
+  // it is two segments it can never collide with the one-segment "/:id" update handler.
+  @httpPost("/:id/upload-image")
+  public async uploadImage(@requestParam("id") _id: string, req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess({ contentType: "Campaigns", action: "Send" })) return this.json({}, 401); // write gate, MessagingApi-scoped, unprefixed
 
       const b = req.body ?? {};
       // Accept the same body shape FileController uses: a base64 data-URL in
       // fileContents (+ fileType + fileName). The client sends what Unlayer hands it.
-      const fileContents: string = b.fileContents ?? b.file ?? "";
+      const fileContents: string = b.fileContents ?? b.file ?? b.base64 ?? "";
       const fileType: string = b.fileType ?? b.contentType ?? "image/png";
       const rawName: string = (b.fileName ?? b.name ?? ("image-" + Date.now())).toString();
       if (!fileContents) return this.json({ error: "no_file", code: "NO_FILE" }, 422);
