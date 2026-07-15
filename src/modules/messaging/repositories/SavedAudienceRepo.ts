@@ -61,6 +61,25 @@ export class SavedAudienceRepo {
       .execute();
   }
 
+  // In-place update of the 4 mutable descriptor fields only (label/audienceType/
+  // targetId/filterJson) — NEVER id/churchId/createdBy/createdAt/removed. churchId
+  // guard FIRST (tenancy) + removed=0 so a soft-deleted row can never be
+  // resurrected. Returns the freshly-loaded, converted model.
+  public async update(churchId: string, model: SavedAudience): Promise<SavedAudience> {
+    await getDb().updateTable("savedAudiences")
+      .set({
+        label: model.label,
+        audienceType: model.audienceType,
+        targetId: model.targetId,
+        filterJson: model.filterJson,
+      })
+      .where("churchId", "=", churchId)      // tenancy FIRST
+      .where("id", "=", model.id)
+      .where("removed", "=", 0 as any)        // never resurrect a soft-deleted row
+      .execute();
+    return this.load(churchId, model.id);     // return the fresh, converted row
+  }
+
   private rowToModel(row: any): SavedAudience {
     if (!row) return null;
     return {
