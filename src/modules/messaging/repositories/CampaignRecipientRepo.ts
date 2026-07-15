@@ -53,6 +53,20 @@ export class CampaignRecipientRepo {
     return rows.map((r) => this.rowToModel(r));
   }
 
+  // Newest recipient row for (churchId, email), optionally scoped to one campaign.
+  // Powers the one-click unsubscribe stamp: the unsubscribe token carries
+  // { churchId, email, campaignId? } but NO recipient row id. When campaignId is
+  // present, narrows to that exact send (correct attribution for the clicked footer
+  // link); when absent, the most recent row for the address is returned.
+  public async loadLatestByEmail(churchId: string, email: string, campaignId?: string): Promise<CampaignRecipient | undefined> {
+    let q = getDb().selectFrom("campaignRecipients").selectAll()
+      .where("churchId", "=", churchId)
+      .where("email", "=", email);
+    if (campaignId) q = q.where("campaignId", "=", campaignId);
+    const row = await q.orderBy("createdAt", "desc").limit(1).executeTakeFirst();
+    return row ? this.rowToModel(row) : undefined;
+  }
+
   // Send-drain READ — the next batch of unsent rows for a campaign (DLV-03: the
   // worker processes ≤ `limit` rows per pass, never the whole list at once). Uses
   // the (churchId, campaignId, status) send-drain index (2026-07-08 migration).
@@ -126,8 +140,9 @@ export class CampaignRecipientRepo {
   //   - delivered = status IN ('delivered','sent') OR any engagement stamp present
   //                 (a Delivery event stamps status='delivered'; an open/click also
   //                  proves delivery even if the Delivery notification was missed)
-  //   - unsubscribed will be 0 this phase (Phase 14 populates unsubscribedAt);
-  //     it is returned so the UI can render it gracefully.
+  //   - unsubscribed = unsubscribedAt IS NOT NULL, stamped by the one-click
+  //     unsubscribe (UnsubscribeController) and SES-complaint (SnsTrackingController)
+  //     paths (Phase 17) — so this now reports real counts, not always 0.
   public async countEngagement(
     churchId: string,
     campaignId: string
