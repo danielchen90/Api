@@ -24,11 +24,14 @@ import { resolveBinding } from "./renderBindings.js";
 // LicenseTemplateInterface.ts ("KEEP IN SYNC WITH PHASE 6 RENDERER"). This is the
 // declarative layout the renderer consumes; geometry is mm, font size is pt, NO px.
 // ---------------------------------------------------------------------------
+export type TemplateFormat = "card" | "letter-portrait" | "letter-landscape";
+
 export interface LicenseTemplateLayout {
   schemaVersion: 1;
   canvas: {
-    trimWidthMm: number; // 85.6 (CR80 trim)
-    trimHeightMm: number; // 53.98
+    trimWidthMm: number; // 85.6 (CR80 trim); Letter = 215.9/279.4
+    trimHeightMm: number; // 53.98; Letter = 279.4/215.9
+    format?: TemplateFormat; // absent => "card" (back-compat)
     bleedMm: number;
     safeMm: number;
     widthMm: number; // trim + 2*bleed (full bleed box)
@@ -179,12 +182,15 @@ export const inlineImage = (ref?: string): string => {
 // Shared page/card scaffolding (reused by buildHtml AND buildTestCardHtml)
 // ---------------------------------------------------------------------------
 
-// Base <style> shared by every rendered surface: exact-CR80 @page (the MediaBox the
-// PDF will inherit), zeroed body, the embedded @font-face faces, and the absolute .el
-// box. `preferCSSPageSize:true` (06-03) makes Chromium honor this @page verbatim.
-const baseStyle = (): string =>
+// Base <style> shared by every rendered surface: the @page (the MediaBox the PDF
+// will inherit) sized to the FULL bleed box (widthMm x heightMm), zeroed body, the
+// embedded @font-face faces, and the absolute .el box. `preferCSSPageSize:true`
+// (06-03) makes Chromium honor this @page VERBATIM — cards render at 85.6x53.98mm,
+// Letter certificates at 215.9x279.4mm. Only the numbers are dynamic; the mm units +
+// margin:0 that make Chromium honor the size are untouched.
+const baseStyle = (pageWidthMm: number, pageHeightMm: number): string =>
   [
-    "@page { size: 85.6mm 53.98mm; margin: 0; }",
+    `@page { size: ${pageWidthMm}mm ${pageHeightMm}mm; margin: 0; }`,
     "html, body { margin: 0; padding: 0; }",
     "* { box-sizing: border-box; }",
     ".el { position: absolute; box-sizing: border-box; overflow: hidden; white-space: pre-wrap; }",
@@ -349,7 +355,8 @@ export const buildHtml = (
     .map((el) => renderElement(el, data, assets))
     .join("\n");
   const cardInner = `${bg}\n${els}`;
-  return htmlDocument(baseStyle(), cardStyleAttr(widthMm, heightMm, bleedMm, calibration), cardInner);
+  // @page = the FULL bleed box (for letter formats bleed=0 so this equals trim).
+  return htmlDocument(baseStyle(widthMm, heightMm), cardStyleAttr(widthMm, heightMm, bleedMm, calibration), cardInner);
 };
 
 // CR80 trim geometry — the test card is built at TRIM (bleed 0) so its marks land on the
@@ -422,8 +429,9 @@ const rulerTicks = (): string => {
 // marks + center crosshair + mm ruler ticks. No licenseTemplate row is involved.
 export const buildTestCardHtml = (calibration: Calibration = NO_CALIBRATION): string => {
   const cardInner = [cornerMarks(), centerCrosshair(), rulerTicks()].join("\n");
-  // bleed 0 → the card IS the trim page; the calibration transform is otherwise identical.
-  return htmlDocument(baseStyle(), cardStyleAttr(TRIM_W, TRIM_H, 0, calibration), cardInner);
+  // bleed 0 → the card IS the trim page; @page stays exact-CR80 (calibration card is
+  // card-only — certificates never use the test card). Transform otherwise identical.
+  return htmlDocument(baseStyle(TRIM_W, TRIM_H), cardStyleAttr(TRIM_W, TRIM_H, 0, calibration), cardInner);
 };
 
 // ---------------------------------------------------------------------------

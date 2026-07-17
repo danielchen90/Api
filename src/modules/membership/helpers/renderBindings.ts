@@ -12,6 +12,7 @@
 // that `resolveBinding` consumes.
 
 import dayjs from "dayjs";
+import { formatFormalDate } from "./formalDate.js";
 
 // --- resolveBinding (ported verbatim from the editor) --------------------------
 
@@ -31,6 +32,9 @@ export const resolveBinding = (
   const value = data?.[key];
   if (value === undefined || value === null || value === "") return "";
   if (isDateKey(key)) {
+    // Reserved sentinel: "formal English" (e.g. "January 15th, 2024"), rendered by
+    // the SHARED formatFormalDate so the server PDF == the editor preview (formalDate.ts).
+    if (dateFormat === "[FORMAL]") return formatFormalDate(String(value));
     const d = dayjs(value);
     return d.isValid() ? d.format(dateFormat || "MMM D, YYYY") : "";
   }
