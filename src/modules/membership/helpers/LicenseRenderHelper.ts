@@ -137,6 +137,8 @@ const FONT_CSS: Record<string, string> = {
   serif: "'Noto Serif', serif",
   condensed: "'Archivo Narrow', sans-serif",
   mono: "'Noto Sans Mono', monospace",
+  cinzel: "'Cinzel', serif",
+  pinyon: "'Pinyon Script', cursive",
 };
 const fontCss = (key: string): string => FONT_CSS[key] ?? FONT_CSS.sans;
 
@@ -193,7 +195,9 @@ const baseStyle = (pageWidthMm: number, pageHeightMm: number): string =>
     `@page { size: ${pageWidthMm}mm ${pageHeightMm}mm; margin: 0; }`,
     "html, body { margin: 0; padding: 0; }",
     "* { box-sizing: border-box; }",
-    ".el { position: absolute; box-sizing: border-box; overflow: hidden; white-space: pre-wrap; }",
+    // font-synthesis:none — never fake a weight/style. A bold request on a regular-only
+    // face (e.g. Pinyon Script 700) renders the real regular glyphs, matching the editor.
+    ".el { position: absolute; box-sizing: border-box; overflow: hidden; white-space: pre-wrap; font-synthesis: none; }",
     buildFontFaceCss(),
   ].join("\n");
 

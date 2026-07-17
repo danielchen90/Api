@@ -28,8 +28,14 @@ interface FontFace {
   file: string; // woff2 filename under FONTS_DIR
 }
 
-// The 4 whitelisted families × 2 weights = 8 faces. Family names mirror
+// The whitelisted families × their weights. Family names mirror
 // FONT_WHITELIST[].cssFamily in the B1Admin editor (KEEP IN SYNC).
+// Cinzel (Trajan-style caps) is a variable woff2 — the 400/700 files are byte-identical
+// but each face pins its own `font-weight` descriptor, so Chromium instantiates the
+// weight axis per face (real bold), exactly as Google Fonts serves it to the editor.
+// Pinyon Script (Edwardian-style script) ships regular-only; its 700 face reuses the
+// 400 file so a bold request renders the regular glyphs rather than a faux-bold
+// synthesis — matching the editor, which suppresses synthesis via `font-synthesis:none`.
 export const FONT_FACES: FontFace[] = [
   { family: "Noto Sans", weight: 400, file: "noto-sans-400.woff2" },
   { family: "Noto Sans", weight: 700, file: "noto-sans-700.woff2" },
@@ -39,6 +45,10 @@ export const FONT_FACES: FontFace[] = [
   { family: "Archivo Narrow", weight: 700, file: "archivo-narrow-700.woff2" },
   { family: "Noto Sans Mono", weight: 400, file: "noto-sans-mono-400.woff2" },
   { family: "Noto Sans Mono", weight: 700, file: "noto-sans-mono-700.woff2" },
+  { family: "Cinzel", weight: 400, file: "cinzel-400.woff2" },
+  { family: "Cinzel", weight: 700, file: "cinzel-700.woff2" },
+  { family: "Pinyon Script", weight: 400, file: "pinyon-script-400.woff2" },
+  { family: "Pinyon Script", weight: 700, file: "pinyon-script-400.woff2" },
 ];
 
 // Cache the built CSS — the woff2 bytes never change at runtime and base64-encoding
