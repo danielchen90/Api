@@ -37,7 +37,7 @@ export interface LicenseTemplateLayout {
     widthMm: number; // trim + 2*bleed (full bleed box)
     heightMm: number;
   };
-  background?: { src: string; fit: "cover" | "contain" };
+  background?: { src: string; fit: "cover" | "contain"; scale?: number };
   elements: LayoutElement[];
 }
 
@@ -327,6 +327,9 @@ const renderBackground = (layout: LicenseTemplateLayout, assets: RenderAssets): 
   const src = inlineImage(ref);
   if (!src) return "";
   const fit = layout.background?.fit ?? "cover";
+  // Centered zoom multiplier on top of object-fit (absent => 1.0). The enclosing
+  // .card has overflow:hidden, so a scale>1 crops to the card exactly as the editor.
+  const scale = layout.background?.scale ?? 1;
   const style = [
     "position:absolute",
     "left:0",
@@ -334,6 +337,8 @@ const renderBackground = (layout: LicenseTemplateLayout, assets: RenderAssets): 
     `width:${layout.canvas.widthMm}mm`,
     `height:${layout.canvas.heightMm}mm`,
     `object-fit:${fit}`,
+    `transform:scale(${scale})`,
+    "transform-origin:center",
     "z-index:0",
     "display:block",
   ].join(";");
