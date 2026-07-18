@@ -72,12 +72,27 @@ export interface ResolvedCard {
 
 // ── Template binding ─────────────────────────────────────────────────────────
 
-// Auto-bind a template to a credential's ordination type (LOCKED: NO operator choice):
-// an ACTIVE template bound to that exact ordination type wins; else the ACTIVE global
-// default. Returns undefined when neither exists (→ skip "no active template for type").
+// Auto-bind a template to a credential's ordination type: an ACTIVE template bound to
+// that exact ordination type wins; else the ACTIVE global default. Returns undefined
+// when neither exists (→ skip "no active template for type"). Used when the operator did
+// NOT choose an explicit template — an override short-circuits this in resolveCards.
 const pickTemplate = (templates: any[], ordinationTypeId?: string | null) =>
   templates.find((t) => t.active && t.ordinationTypeId === ordinationTypeId) ??
   templates.find((t) => t.active && t.isDefault);
+
+// Does this template actually render a member photo? Only templates carrying a `photo`
+// element require a cropped license photo; certificate (letter) templates typically have
+// none, so gating the "no cropped photo" skip on this lets a photo-free certificate batch
+// through for people who have no cropped headshot. Unparseable layout ⇒ assume it needs a
+// photo (preserves the original CR80 card behavior).
+const templateNeedsPhoto = (tmpl: any): boolean => {
+  try {
+    const layout = JSON.parse(tmpl.layoutJson) as LicenseTemplateLayout;
+    return (layout.elements ?? []).some((el) => el.type === "photo");
+  } catch {
+    return true;
+  }
+};
 
 // ── Bounded concurrency pool ───────────────────────────────────────────────────
 // Run `fn` over `items` with at most `limit` in flight at once (caps concurrent
@@ -119,7 +134,8 @@ export class PrintBatchRenderHelper {
     churchId: string,
     personIds: string[],
     scope: CampusScope,
-    _actorId: string
+    _actorId: string,
+    overrideTemplateId?: string
   ): Promise<{ cards: ResolvedCard[]; skipped: SkippedCard[] }> {
     const cards: ResolvedCard[] = [];
     const skipped: SkippedCard[] = [];
@@ -127,6 +143,13 @@ export class PrintBatchRenderHelper {
     // Church-wide vocabulary — LicenseTemplateRepo has no applyCampusScope.
     const templates = await this.repos.licenseTemplate.loadAll(churchId);
     const church = await this.repos.church.load(churchId, churchId);
+
+    // Operator override: force EVERY card onto this one chosen template (e.g. a certificate)
+    // regardless of ordination type. Must be an ACTIVE, in-scope template; if the id is bad
+    // or inactive, `overrideTemplate` stays undefined and every card is skipped-and-reported.
+    const overrideTemplate = overrideTemplateId
+      ? templates.find((t) => t.id === overrideTemplateId && t.active)
+      : undefined;
 
     for (const personId of personIds) {
       // Credentials scoped to the caller's writable/visible campuses (Phase 2).
@@ -148,15 +171,28 @@ export class PrintBatchRenderHelper {
           continue;
         }
 
-        const tmpl = pickTemplate(templates, ord.ordinationTypeId);
-        if (!tmpl) {
-          skipped.push({ personId, reason: "no active template for type" });
-          continue;
+        // With an override, EVERY card uses the chosen template; a bad/inactive override id
+        // skips-and-reports. Otherwise auto-pick per ordination type (else the global default).
+        let tmpl: any;
+        if (overrideTemplateId) {
+          if (!overrideTemplate) {
+            skipped.push({ personId, reason: "selected template not found or inactive" });
+            continue;
+          }
+          tmpl = overrideTemplate;
+        } else {
+          tmpl = pickTemplate(templates, ord.ordinationTypeId);
+          if (!tmpl) {
+            skipped.push({ personId, reason: "no active template for type" });
+            continue;
+          }
         }
 
-        // A batch card requires a cropped license photo (LOCKED skip-and-report).
+        // A card requires a cropped license photo ONLY when the chosen template renders one
+        // (a photo-free certificate template prints without a headshot). Always load the crop
+        // so a photo template still fills its region when a crop exists.
         const crop = await this.repos.personPhotoCrop.loadByPurpose(churchId, personId, "license");
-        if (!crop?.id) {
+        if (templateNeedsPhoto(tmpl) && !crop?.id) {
           skipped.push({ personId, reason: "no cropped photo" });
           continue;
         }
@@ -176,13 +212,15 @@ export class PrintBatchRenderHelper {
 
         const assets: RenderAssets = {
           photoSrc: "/" + churchId + "/membership/people/" + personId + ".png",
-          crop: {
-            cropX: crop.cropX,
-            cropY: crop.cropY,
-            cropWidth: crop.cropWidth,
-            cropHeight: crop.cropHeight,
-            rotation: crop.rotation
-          }
+          crop: crop?.id
+            ? {
+                cropX: crop.cropX,
+                cropY: crop.cropY,
+                cropWidth: crop.cropWidth,
+                cropHeight: crop.cropHeight,
+                rotation: crop.rotation
+              }
+            : undefined
         };
 
         cards.push({

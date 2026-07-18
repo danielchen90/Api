@@ -105,15 +105,17 @@ export class PrintBatchController extends MembershipBaseController {
       if (!au.checkAccess(CAMPUS_WRITE_PERMISSION)) return this.json({}, 401);
 
       const scope = await CampusScopeHelper.resolve(au, this.repos);
-      const { personIds, filterJson, name } = req.body as {
+      const { personIds, filterJson, name, templateId } = req.body as {
         personIds?: string[];
         filterJson?: unknown;
         name?: string;
+        templateId?: string; // OPTIONAL operator override: force ALL cards onto this one
+        //                       template (e.g. a certificate); absent => auto-pick per type.
       };
 
       // 2. Resolve the card set (per-credential campus scope enforced inside — Pattern 5).
       const renderHelper = new PrintBatchRenderHelper(this.repos);
-      const { cards, skipped } = await renderHelper.resolveCards(au.churchId, personIds ?? [], scope, au.id);
+      const { cards, skipped } = await renderHelper.resolveCards(au.churchId, personIds ?? [], scope, au.id, templateId);
 
       // 3. Persist the batch (provenance filterJson stored alongside the resolved cards).
       const batch = await this.repos.printBatch.save({
