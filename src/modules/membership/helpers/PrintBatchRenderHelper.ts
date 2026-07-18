@@ -135,10 +135,18 @@ export class PrintBatchRenderHelper {
     personIds: string[],
     scope: CampusScope,
     _actorId: string,
-    overrideTemplateId?: string
+    overrideTemplateId?: string,
+    ordinationTypeIds?: string[]
   ): Promise<{ cards: ResolvedCard[]; skipped: SkippedCard[] }> {
     const cards: ResolvedCard[] = [];
     const skipped: SkippedCard[] = [];
+
+    // Optional credential-type restriction: when the operator picked one or more callings in
+    // the Print Station filter, print ONLY those credential types (so a person holding Pastor +
+    // Choice Award doesn't also get a Pastor card). Empty/absent => every active credential
+    // (backward-compatible default). Non-empty filter that matches none of a person's active
+    // credentials is skipped-and-reported so the operator sees who was left out.
+    const typeFilter = ordinationTypeIds && ordinationTypeIds.length > 0 ? new Set(ordinationTypeIds) : null;
 
     // Church-wide vocabulary — LicenseTemplateRepo has no applyCampusScope.
     const templates = await this.repos.licenseTemplate.loadAll(churchId);
@@ -154,9 +162,16 @@ export class PrintBatchRenderHelper {
     for (const personId of personIds) {
       // Credentials scoped to the caller's writable/visible campuses (Phase 2).
       const ordinations = await this.repos.personOrdination.loadForPerson(churchId, personId, scope);
-      const active = ordinations.filter((o) => o.status === "active");
-      if (!active.length) {
+      const allActive = ordinations.filter((o) => o.status === "active");
+      if (!allActive.length) {
         skipped.push({ personId, reason: "no active credential" });
+        continue;
+      }
+      // Restrict to the operator's chosen credential types (if any). A person with active
+      // credentials but none of the selected types is reported as skipped, not silently dropped.
+      const active = typeFilter ? allActive.filter((o) => typeFilter.has(o.ordinationTypeId!)) : allActive;
+      if (!active.length) {
+        skipped.push({ personId, reason: "no credential of the selected type(s)" });
         continue;
       }
 
