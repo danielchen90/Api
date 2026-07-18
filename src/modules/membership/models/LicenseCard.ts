@@ -37,6 +37,7 @@ export class LicenseCard {
   public createdBy?: string;
   public removed?: boolean;
   public batchId?: string;
+  public sortOrder?: number; // card index within its batch → deterministic, page-aligned loadByBatch order
   public status?: string;
   public printedAt?: Date;
   public voidReason?: string;

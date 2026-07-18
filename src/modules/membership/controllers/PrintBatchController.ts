@@ -135,7 +135,8 @@ export class PrintBatchController extends MembershipBaseController {
       //    card (in card order → loadByBatch createdAt asc later matches the PDF page order).
       //    Stamp the resulting cardId back onto the ResolvedCard so renderBatch can flip it
       //    to "queued" as each card merges.
-      for (const card of cards) {
+      for (let index = 0; index < cards.length; index++) {
+        const card = cards[index];
         const saved = await this.repos.licenseCard.save({
           churchId: au.churchId,
           personId: card.personId,
@@ -144,6 +145,7 @@ export class PrintBatchController extends MembershipBaseController {
           templateId: card.templateId,
           templateVersion: card.templateVersion,
           batchId: batch.id,
+          sortOrder: index, // deterministic page-aligned order (createdAt is whole-second → ties)
           status: "draft",
           createdBy: au.id,
           createdAt: new Date()

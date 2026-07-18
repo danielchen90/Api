@@ -34,6 +34,7 @@ export class LicenseCardRepo {
       createdBy: model.createdBy,
       removed: false,
       batchId: model.batchId,
+      sortOrder: model.sortOrder ?? 0,
       status: model.status ?? "printed",
       printedAt: model.printedAt,
       voidReason: model.voidReason,
@@ -91,12 +92,17 @@ export class LicenseCardRepo {
     return rows.map((r) => this.rowToModel(r));
   }
 
-  // Cards in a batch, oldest-first — church-scoped (print-station per-card list).
+  // Cards in a batch, in DETERMINISTIC insert/PDF-page order — church-scoped
+  // (print-station per-card list). sortOrder is the card index at insert time;
+  // createdAt is only a tiebreaker for legacy batches predating the sortOrder column
+  // (all such rows share sortOrder=0). This ordering MUST match the assembled-PDF
+  // page order so the grid pairs each thumbnail with the correct card.
   public async loadByBatch(churchId: string, batchId: string): Promise<LicenseCard[]> {
     const rows = await getDb().selectFrom("licenseCards").selectAll()
       .where("churchId", "=", churchId)
       .where("batchId", "=", batchId)
       .where("removed", "=", false)
+      .orderBy("sortOrder", "asc")
       .orderBy("createdAt", "asc")
       .execute();
     return rows.map((r) => this.rowToModel(r));
@@ -130,6 +136,7 @@ export class LicenseCardRepo {
       createdBy: row.createdBy,
       removed: !!row.removed,
       batchId: row.batchId,
+      sortOrder: row.sortOrder == null ? 0 : Number(row.sortOrder),
       status: row.status,
       printedAt: row.printedAt,
       voidReason: row.voidReason,
