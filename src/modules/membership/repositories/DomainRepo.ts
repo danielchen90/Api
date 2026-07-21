@@ -47,6 +47,29 @@ export class DomainRepo {
     return (await getDb().selectFrom("domains").selectAll().where("domainName", "=", domainName).executeTakeFirst()) ?? null;
   }
 
+  // Public-safe loader for the anonymous /public/lookup route. JOINs churches to
+  // surface the owning church's subDomain (the ConfigHelper key the B1App
+  // middleware rewrites to). Reuses the loadPairs JOIN shape. Returns a
+  // purpose-built object — never the raw JOIN row — so no unknown church columns
+  // leak through the anon endpoint (there is no member PII here, but keep the
+  // PublicDto habit: whitelist the fields).
+  public async loadByNameWithSubDomain(domainName: string): Promise<{ id: string; churchId: string; domainName: string; subDomain: string; isStale: boolean; lastChecked: Date | null } | null> {
+    const row = await getDb().selectFrom("domains as d")
+      .innerJoin("churches as c", "c.id", "d.churchId")
+      .select(["d.id as id", "d.churchId as churchId", "d.domainName as domainName", "c.subDomain as subDomain", "d.isStale as isStale", "d.lastChecked as lastChecked"])
+      .where("d.domainName", "=", domainName)
+      .executeTakeFirst();
+    if (!row) return null;
+    return {
+      id: row.id as string,
+      churchId: row.churchId as string,
+      domainName: row.domainName as string,
+      subDomain: row.subDomain as string,
+      isStale: Boolean(row.isStale),
+      lastChecked: (row.lastChecked as Date) ?? null
+    };
+  }
+
   public async loadPairs() {
     return getDb().selectFrom("domains as d")
       .innerJoin("churches as c", "c.id", "d.churchId")
