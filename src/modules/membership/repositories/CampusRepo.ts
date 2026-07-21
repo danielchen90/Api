@@ -25,6 +25,7 @@ export class CampusRepo {
       longitude: model.longitude,
       timezone: model.timezone,
       website: model.website,
+      slug: model.slug,
       importKey: model.importKey,
       removed: false
     }).execute();
@@ -43,7 +44,8 @@ export class CampusRepo {
       latitude: model.latitude,
       longitude: model.longitude,
       timezone: model.timezone,
-      website: model.website
+      website: model.website,
+      slug: model.slug
     }).where("id", "=", model.id)
       .where("churchId", "=", model.churchId)
       .execute();
@@ -60,6 +62,52 @@ export class CampusRepo {
 
   public async loadAll(churchId: string) {
     return getDb().selectFrom("campuses").selectAll().where("churchId", "=", churchId).where("removed", "=", false).orderBy("name").execute();
+  }
+
+  /**
+   * ANONYMOUS PUBLIC campus list (SITE-02/03, MAP-01..04). Returns every non-removed
+   * campus for the church with ONLY the public physical-location columns (id, slug,
+   * name, address, lat/lng) ordered by name. The controller still projects each row
+   * through `toPublicCampus` before it leaves the server — this select just narrows
+   * the columns; the whitelist builder is the authoritative safety gate.
+   */
+  public async loadPublicList(churchId: string) {
+    return getDb().selectFrom("campuses")
+      .select(["id", "slug", "name", "address1", "address2", "city", "state", "zip", "country", "latitude", "longitude"])
+      .where("churchId", "=", churchId)
+      .where("removed", "=", false)
+      .orderBy("name")
+      .execute();
+  }
+
+  /**
+   * Resolve a public campus route slug -> campus. First tries the live
+   * `campuses.slug`; on a miss, falls back to the `campusSlugAlias` table (an OLD
+   * slug retained after a rename) and returns `{ campus, aliasOf }` so the UI layer
+   * can emit a 301 to the campus's CURRENT slug (SITE-03, SC#2). Returns null when
+   * neither resolves.
+   */
+  public async loadBySlug(churchId: string, slug: string): Promise<{ campus: any; aliasOf: string | null } | null> {
+    const direct = await getDb().selectFrom("campuses").selectAll()
+      .where("churchId", "=", churchId)
+      .where("slug", "=", slug)
+      .where("removed", "=", false)
+      .executeTakeFirst();
+    if (direct) return { campus: direct, aliasOf: null };
+
+    const alias = await getDb().selectFrom("campusSlugAlias").selectAll()
+      .where("churchId", "=", churchId)
+      .where("slug", "=", slug)
+      .executeTakeFirst();
+    if (!alias?.campusId) return null;
+
+    const aliased = await getDb().selectFrom("campuses").selectAll()
+      .where("churchId", "=", churchId)
+      .where("id", "=", alias.campusId)
+      .where("removed", "=", false)
+      .executeTakeFirst();
+    if (!aliased) return null;
+    return { campus: aliased, aliasOf: slug };
   }
 
   public convertToModel(_churchId: string, data: any) {
@@ -85,6 +133,7 @@ export class CampusRepo {
       longitude: data.longitude,
       timezone: data.timezone,
       website: data.website,
+      slug: data.slug,
       importKey: data.importKey
     };
     return result;

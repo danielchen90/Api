@@ -12,6 +12,8 @@ export class Campus {
   public longitude?: number;
   public timezone?: string;
   public website?: string;
+  // Stable public-website slug, decoupled from the mutable `name` (SITE-02/03).
+  public slug?: string;
 
   public importKey?: string;
   public removed?: boolean;

@@ -49,6 +49,19 @@ export interface PeopleTable {
   removed?: boolean;
 }
 
+/**
+ * campusSlugAlias — maps an OLD campus slug -> the CURRENT campus id so a rename
+ * keeps the previous public URL alive as a 301 alias (SITE-03, SC#2). There is no
+ * model class for this lookup table; the row shape is declared inline here.
+ */
+export interface CampusSlugAliasTable {
+  id?: string;
+  churchId?: string;
+  slug?: string;
+  campusId?: string;
+  createdAt?: Date;
+}
+
 export interface MembershipDatabase {
   accessLogs: AccessLog;
   answers: Answer;
@@ -64,6 +77,7 @@ export interface MembershipDatabase {
   // the NULL-safe org-default unique index) is omitted from the CampusContent
   // model and cast away on selectAll() if needed.
   campusContent: CampusContent;
+  campusSlugAlias: CampusSlugAliasTable;
   churches: Omit<Church, "settings">;
   clientErrors: ClientError;
   domains: Domain;
