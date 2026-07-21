@@ -3,7 +3,7 @@ import express from "express";
 import { Playlist, Sermon } from "../models/index.js";
 import { ContentBaseController } from "./ContentBaseController.js";
 import { Permissions } from "../../../shared/helpers/Permissions.js";
-import { YouTubeHelper, Environment, VimeoHelper, OpenAiHelper } from "../helpers/index.js";
+import { YouTubeHelper, Environment, VimeoHelper, OpenAiHelper, SermonYouTubeHelper } from "../helpers/index.js";
 import { FileStorageHelper } from "@churchapps/apihelper";
 
 @controller("/content/sermons")
@@ -254,6 +254,42 @@ export class SermonController extends ContentBaseController {
   public async loadPublicAll(@requestParam("churchId") churchId: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
     return this.actionWrapperAnon(req, res, async () => {
       return await this.repos.sermon.loadPublicAll(churchId);
+    });
+  }
+
+  /**
+   * ANONYMOUS latest-sermon read (MED-01). The per-campus public page (plan 20-05) calls this
+   * server-side with `campusContent.sermonYoutubeChannel`; an empty channel → the page never calls it.
+   *
+   * Full path: GET /content/sermons/public/latest/:channelId (actionWrapperAnon — no `au`, no auth).
+   * Multi-segment under /public/ so it can NEVER be swallowed by the /:id catch-all
+   * (messaging-route-collision memory).
+   *
+   * Returns ONLY the whitelisted `{ videoId, title, thumbnail, publishedAt }` DTO or null — the
+   * YouTube API key NEVER leaves the server (it only appears inside SermonYouTubeHelper's upstream
+   * URL), and the raw upstream payload is never echoed. Empty/invalid/error channel → null so the
+   * block hides gracefully (mixed empty-state rule); obviously bad input is rejected before any
+   * upstream call.
+   */
+  @httpGet("/public/latest/:channelId")
+  public async latestSermon(@requestParam("channelId") channelId: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
+    return this.actionWrapperAnon(req, res, async () => {
+      // Validate the channelId shape before touching upstream: non-empty, plausible YouTube
+      // channel id / @handle, bounded length, no slashes/spaces. Bad input → null (no upstream call).
+      const raw = (channelId ?? "").trim();
+      const plausible = raw.length > 0 && raw.length <= 64 && /^[A-Za-z0-9_@.-]+$/.test(raw);
+      if (!plausible) return null;
+
+      const sermon = await SermonYouTubeHelper.getLatestSermon(raw);
+      if (!sermon) return null;
+
+      // Whitelist the response — ONLY these 4 fields, never the key, never the raw upstream row.
+      return {
+        videoId: sermon.videoId,
+        title: sermon.title,
+        thumbnail: sermon.thumbnail,
+        publishedAt: sermon.publishedAt
+      };
     });
   }
 
