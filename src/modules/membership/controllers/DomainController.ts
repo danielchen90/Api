@@ -38,10 +38,19 @@ export class DomainController extends MembershipBaseController {
     });
   }
 
+  // Anonymous domain-routing lookup consumed by the B1App custom-domain
+  // middleware. Returns the owning church's subDomain (the ConfigHelper key)
+  // alongside churchId so the middleware needs a single fetch. www handling:
+  // a leading "www." is stripped HERE so "www.bibleteachers.com" and the apex
+  // "bibleteachers.com" resolve to the same church (domains are stored apex-only
+  // — see DomainRepo.loadPairs which excludes "%www.%"). This is org-published
+  // routing data (no member PII); it is anon-safe, and the repo returns a
+  // purpose-built object, never a raw JOIN row.
   @httpGet("/public/lookup/:domainName")
   public async getPublicByName(@requestParam("domainName") domainName: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
     return this.actionWrapperAnon(req, res, async () => {
-      return await this.repos.domain.loadByName(domainName);
+      const apex = (domainName || "").replace(/^www\./i, "");
+      return await this.repos.domain.loadByNameWithSubDomain(apex);
     });
   }
 
@@ -72,8 +81,29 @@ export class DomainController extends MembershipBaseController {
           promises.push(this.repos.domain.save(domain));
         });
         const result = await Promise.all(promises);
-        await CaddyHelper.updateCaddy();
-        return result;
+        // Auto-push the Caddy route as part of save (one-step attach). If the
+        // push fails, the domain record is already persisted — flag it not-live
+        // (isStale) so it stays editable/retryable, and fail loudly with a
+        // structured error the frontend can surface. Do NOT report success.
+        try {
+          await CaddyHelper.updateCaddy();
+          return result;
+        } catch (err: any) {
+          const notLive: Promise<Domain>[] = [];
+          result.forEach((domain) => {
+            domain.isStale = true;
+            domain.lastChecked = new Date();
+            notLive.push(this.repos.domain.save(domain));
+          });
+          const savedNotLive = await Promise.all(notLive);
+          return this.json({
+            error: "Caddy route push failed",
+            message: err?.message || "Domain saved but the route could not be published.",
+            pushFailed: true,
+            savedNotLive: true,
+            domains: savedNotLive
+          }, 502);
+        }
       }
     });
   }
