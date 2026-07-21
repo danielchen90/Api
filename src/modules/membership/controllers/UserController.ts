@@ -396,9 +396,14 @@ export class UserController extends MembershipBaseController {
           return res.status(400).json({ errors: ["Email is not configured on this server. Please contact your administrator to reset your password."], mailConfigured: false });
         }
 
+        // PUB-02 enumeration-safety: forgotPassword must NOT be an account-existence oracle.
+        // Return a BYTE-IDENTICAL generic 200 body regardless of whether the email maps to a
+        // real user; only actually send the reset email (and write the verification code /
+        // audit row) when a user exists. A member email and a non-member email are therefore
+        // indistinguishable to an anonymous caller (identical status + identical JSON bytes).
+        // This is asserted by enumerationSafety.test.ts, which fails the build on any regression.
         const user = await this.repos.user.loadByEmail(req.body.userEmail);
-        if (user === null) return this.json({ emailed: false }, 200);
-        else {
+        if (user !== null) {
           const code = generateVerificationCode();
           const codeHash = bcrypt.hashSync(code, 10);
           const promises = [] as Promise<any>[];
@@ -407,8 +412,8 @@ export class UserController extends MembershipBaseController {
           await Promise.all(promises);
           const ip = AuditLogHelper.getClientIp(req);
           AuditLogHelper.log(this.repos, "", user.id, "security", "password_reset", "user", user.id, { email: user.email }, ip);
-          return this.json({ emailed: true }, 200);
         }
+        return this.json({ emailed: true }, 200);
       } catch (e) {
         if (Environment.currentEnvironment === "dev") {
           throw e;
@@ -459,38 +464,15 @@ export class UserController extends MembershipBaseController {
     });
   }
 
-  @httpPost("/checkEmail", body("email").isEmail().trim().normalizeEmail({ gmail_remove_dots: false }))
-  public async checkEmail(req: express.Request<{}, {}, { email: string }>, res: express.Response): Promise<any> {
-    return this.actionWrapperAnon(req, res, async () => {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-      const email = req.body.email;
-      const user = await this.repos.user.loadByEmail(email);
-
-      if (user) {
-        return this.json({ exists: true, peopleMatches: [] }, 200);
-      }
-
-      const churches = await this.repos.church.loadAll();
-      const matches: Array<{ firstName: string; lastName: string; churchId: string; churchName: string }> = [];
-
-      for (const church of churches) {
-        const matchingPeople = await this.repos.person.searchEmail(church.id, email);
-        const exactMatches = matchingPeople.filter((p: Person) => p.contactInfo?.email?.toLowerCase() === email.toLowerCase());
-        for (const person of exactMatches) {
-          matches.push({
-            firstName: person.name?.first || "",
-            lastName: person.name?.last || "",
-            churchId: church.id,
-            churchName: church.name
-          });
-        }
-      }
-
-      return this.json({ exists: false, peopleMatches: matches }, 200);
-    });
-  }
+  // PUB-02 enumeration-safety: the former anonymous POST /checkEmail endpoint was REMOVED.
+  // It was a direct account-existence + PII oracle — it returned `{exists:true}` vs
+  // `{exists:false, peopleMatches:[{firstName,lastName,churchId,churchName}, ...]}`, letting
+  // any unauthenticated caller (a) enumerate which emails have accounts and (b) harvest a
+  // person's name + which churches they belong to across EVERY church in the system. There is
+  // no anonymous-safe redaction of "does this account exist" for a probe-by-email endpoint, so
+  // the endpoint is deleted rather than neutralized. The B1App login flow no longer probes for
+  // existence: it attempts login/registration directly and shows a GENERIC message. Its absence
+  // from the anonymous surface is asserted by enumerationSafety.test.ts.
 
   @httpPost("/setDisplayName", ...setDisplayNameValidation)
   public async setDisplayName(req: express.Request<{}, {}, { firstName: string; lastName: string; userId?: string }>, res: express.Response): Promise<any> {
