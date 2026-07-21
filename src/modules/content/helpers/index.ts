@@ -1,5 +1,6 @@
 // External API helpers
 export { YouTubeHelper } from "./YouTubeHelper.js";
+export { SermonYouTubeHelper } from "./SermonYouTubeHelper.js";
 export { VimeoHelper } from "./VimeoHelper.js";
 export { OpenAiHelper } from "./OpenAiHelper.js";
 export { ApiBibleHelper } from "./ApiBibleHelper.js";
