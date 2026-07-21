@@ -24,6 +24,7 @@ export { UserController } from "./UserController.js";
 export { UserChurchController } from "./UserChurchController.js";
 export { VisibilityPreferenceController } from "./VisibilityPreferenceController.js";
 export { PublicLeadershipController } from "./PublicLeadershipController.js";
+export { PublicFormSubmissionController } from "./PublicFormSubmissionController.js";
 export { CampusContentController } from "./CampusContentController.js";
 
 export { MembershipSettingController } from "./SettingController.js";
