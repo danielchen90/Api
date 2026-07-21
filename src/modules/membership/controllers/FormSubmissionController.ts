@@ -3,12 +3,68 @@ import express from "express";
 import { MembershipBaseController } from "./MembershipBaseController.js";
 import { FormSubmission, Answer, Form, Church } from "../models/index.js";
 import { Permissions, EmailHelper, Environment } from "../helpers/index.js";
+import { CampusScopeHelper } from "../helpers/CampusScopeHelper.js";
 import { MemberPermission, Person } from "../models/index.js";
 import { WebhookDispatcher } from "../../../shared/webhooks/index.js";
 import axios from "axios";
 
 @controller("/membership/formsubmissions")
 export class FormSubmissionController extends MembershipBaseController {
+  // ── Campus-scoped login-free inbox READ (FRM-03) ──
+  //
+  // The prayer/contact submissions written by PublicFormSubmissionController are read here
+  // by admins. Visibility is scope-enforced ON THE READ via CampusScopeHelper (the exact
+  // primitive used by CampusContentController): an org/leadership admin (mode "all") sees
+  // every campus's submissions; a campus admin (mode "scoped") sees ONLY their assigned
+  // campus(es); a caller with no scope (mode "deny") sees NONE. The scope is ALWAYS derived
+  // SERVER-SIDE from `au` — NEVER from a request campusId param (a client cannot widen it).
+  //
+  // The permission gate is the SAME UNPREFIXED Permissions.forms constant the rest of this
+  // controller uses (campus-auth-perms-unprefixed memory: an apiName-prefixed constant would
+  // 401 a legitimate campus admin whose per-api JWT carries the bare Forms/Edit permission).
+  //
+  // ROUTE ORDER (messaging-route-collision memory): these `/inbox*` routes are declared
+  // BEFORE the `@httpGet("/:id")` catch-all below so `/inbox` is never swallowed by `/:id`.
+  //
+  // The actual scope enforcement runs inside the repo: CampusScopeHelper.resolve(au) here
+  // derives the CampusScope, and FormSubmissionRepo.loadInboxScoped/loadDetailScoped/markRead
+  // apply it via applyCampusScope(query, scope) — churchId tenancy FIRST, then the campus
+  // scope layered on top (mode "all" → no filter, "scoped" → campusId IN(set), "deny" → 1=0).
+
+  @httpGet("/inbox")
+  public async inbox(req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(Permissions.forms.admin) && !au.checkAccess(Permissions.forms.edit)) return this.json([], 401);
+      // Scope derived server-side from the requesting admin — never from the request.
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      return this.repos.formSubmission.loadInboxScoped(au.churchId, scope);
+    });
+  }
+
+  @httpGet("/inbox/:id")
+  public async inboxDetail(@requestParam("id") id: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(Permissions.forms.admin) && !au.checkAccess(Permissions.forms.edit)) return this.json({}, 401);
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const row = await this.repos.formSubmission.loadDetailScoped(au.churchId, id, scope);
+      // Out-of-scope (or absent) → 404, never leak another campus's submission.
+      if (!row) return this.json({}, 404);
+      return this.repos.formSubmission.convertToModel(au.churchId, row);
+    });
+  }
+
+  @httpPost("/inbox/:id/read")
+  public async inboxMarkRead(@requestParam("id") id: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au.checkAccess(Permissions.forms.admin) && !au.checkAccess(Permissions.forms.edit)) return this.json({}, 401);
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const numUpdated = await this.repos.formSubmission.markRead(au.churchId, id, scope);
+      // Scope-guarded: a row outside the caller's scope updates nothing → 404.
+      if (numUpdated === 0n) return this.json({}, 404);
+      return this.json({ ok: true });
+    });
+  }
+
   @httpGet("/:id")
   public async get(@requestParam("id") id: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
