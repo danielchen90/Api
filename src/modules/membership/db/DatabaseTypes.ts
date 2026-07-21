@@ -1,5 +1,5 @@
 import type {
-  AccessLog, Answer, ApiKey, AssociatedGroup, AuditLog, Auxiliary, Campus, Church, ClientError, Domain, Form,
+  AccessLog, Answer, ApiKey, AssociatedGroup, AuditLog, Auxiliary, Campus, CampusContent, Church, ClientError, Domain, Form,
   FormSubmission, Group, GroupJoinRequest, GroupMember, GroupMemberHistory, Household, List, ListMember, MemberPermission,
   OAuthClient, OAuthCode, OAuthDeviceCode, OAuthRelaySession, OAuthToken,
   OrdinationType, PersonOrdination, PersonPhotoCrop, LicenseTemplate, LicenseTemplateVersion, LicenseCard, PrintBatch,
@@ -57,6 +57,13 @@ export interface MembershipDatabase {
   auditLogs: AuditLog;
   auxiliaries: Auxiliary;
   campuses: Campus;
+  // Per-campus public-website content (CMS-01). One row per (churchId, campusId,
+  // contentType); campusId NULL = the org default, non-null = a SPARSE campus
+  // override. `content` is longtext JSON; `version` is the OCC guard. The
+  // DB-generated read-only `campusKey` column (COALESCE(campusId,'~ORG~'), backing
+  // the NULL-safe org-default unique index) is omitted from the CampusContent
+  // model and cast away on selectAll() if needed.
+  campusContent: CampusContent;
   churches: Omit<Church, "settings">;
   clientErrors: ClientError;
   domains: Domain;

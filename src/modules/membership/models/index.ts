@@ -19,6 +19,7 @@ export { Api } from "./Api.js";
 export { Church } from "./Church.js";
 export { User } from "./User.js";
 export { Campus } from "./Campus.js";
+export { CampusContent } from "./CampusContent.js";
 export { Auxiliary } from "./Auxiliary.js";
 export { Domain } from "./Domain.js";
 export { Role } from "./Role.js";
