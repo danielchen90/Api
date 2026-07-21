@@ -102,6 +102,31 @@ const personOrdinationGetById = (scope: CampusScope, id?: string): any => {
   return q.execute()[0] ?? {};
 };
 
+// ── Phase-20 formSubmission INBOX fixtures (login-free prayer/contact rows on A / B). ────────────
+// FormSubmissionRepo.loadInboxScoped / loadDetailScoped / markRead all filter churchId FIRST then
+// layer applyCampusScope(q, scope) — the SAME primitive. Driving it over an in-memory fixture keeps
+// the FRM-03 inbox-read registration DB-free and asserts a campus admin cannot read another
+// campus's submissions (the leak-gate assertion the plan calls for).
+const INBOX_ROWS = [
+  { id: "fs-a1", campusId: A, submissionType: "prayer", submitterName: "Alice", unread: 1 },
+  { id: "fs-a2", campusId: A, submissionType: "contact", submitterName: "Amy", unread: 1 },
+  { id: "fs-b1", campusId: B, submissionType: "prayer", submitterName: "Bob", unread: 1 }
+];
+
+// inbox LIST — loadInboxScoped: churchId then applyCampusScope, returns the matched rows.
+const inboxList = (scope: CampusScope): any[] => {
+  let q = new InMemoryQuery(INBOX_ROWS); // (real repo filters churchId first; constant here)
+  q = applyCampusScope(q, scope);
+  return q.execute();
+};
+
+// inbox DETAIL — loadDetailScoped: an out-of-scope id 404-hides (repo returns null; `?? {}` here).
+const inboxDetail = (scope: CampusScope, id?: string): any => {
+  let q = new InMemoryQuery(INBOX_ROWS).where("id", "=", id);
+  q = applyCampusScope(q, scope);
+  return q.execute()[0] ?? {};
+};
+
 // Fake AuthenticatedUser whose checkAccess answers per-permission (marker vs Edit capability).
 const makeAu = (opts: { marker: boolean; edit?: boolean }) =>
   ({
@@ -232,6 +257,26 @@ describe("campusIsolation (PERM-07 phase exit gate)", () => {
       // issue: assertWritableCampus(scope, body.campusId); changeStatus: on the LOADED row's campusId.
       // Either way a foreign-campus target is rejected and the own campus stays writable.
       expectWriteIsolation({ mode: "scoped", campusIds: [A] }, B);
+    });
+  });
+
+  describe("Phase 20: formSubmission inbox read isolation (FRM-03 — login-free prayer/contact reads)", () => {
+    it("detail: a foreign-campus submission 404-hides under A-scope; org-wide sees both; deny none", async () => {
+      await expectCampusIsolation(inboxDetail, {
+        kind: "get-by-id",
+        inScopeCampusId: A,
+        outOfScopeCampusId: B,
+        inScopeId: "fs-a1",
+        outOfScopeId: "fs-b1"
+      });
+    });
+
+    it("list: a campus admin sees ONLY their campus's submissions; org-wide all; deny empty", async () => {
+      await expectCampusIsolation(inboxList, {
+        kind: "list",
+        inScopeCampusId: A,
+        outOfScopeCampusId: B
+      });
     });
   });
 
