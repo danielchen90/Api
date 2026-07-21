@@ -34,7 +34,7 @@ import {
   LicenseCardRepo,
   PrintBatchRepo
 } from "./index.js";
-import { UserRepo, ChurchRepo, RoleRepo, RoleMemberRepo, RolePermissionRepo, UserChurchRepo, AccessLogRepo, AuditLogRepo, CampusRepo, AuxiliaryRepo } from "./index.js";
+import { UserRepo, ChurchRepo, RoleRepo, RoleMemberRepo, RolePermissionRepo, UserChurchRepo, AccessLogRepo, AuditLogRepo, CampusRepo, CampusContentRepo, AuxiliaryRepo } from "./index.js";
 
 export class Repos {
   public associatedGroup: AssociatedGroupRepo;
@@ -54,6 +54,7 @@ export class Repos {
 
   public accessLog: AccessLogRepo;
   public campus: CampusRepo;
+  public campusContent: CampusContentRepo;
   public auxiliary: AuxiliaryRepo;
   public church: ChurchRepo;
   public domain: DomainRepo;
@@ -108,6 +109,7 @@ export class Repos {
 
     this.accessLog = new AccessLogRepo();
     this.campus = new CampusRepo();
+    this.campusContent = new CampusContentRepo();
     this.auxiliary = new AuxiliaryRepo();
     this.church = new ChurchRepo();
     this.domain = new DomainRepo();
