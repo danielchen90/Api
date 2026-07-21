@@ -84,6 +84,70 @@ export function toPublicLeader(row: any): PublicLeaderDTO {
 }
 
 /**
+ * The ONLY shape an anonymous campus-LIST read ever returns (SITE-02/03, MAP-01..04).
+ *
+ * NOTE ON ADDRESS KEYS: address1/city/state/zip ARE intentionally exposed here — a
+ * campus is a PUBLIC physical location (the public site renders its address server-
+ * side, SC#1). This is the ONE builder in this file allowed to name address keys;
+ * that is deliberate and safe because a campus row carries no member PII. It STILL
+ * must NEVER carry churchId, importKey, a private website field, or ANY person key.
+ */
+export type PublicCampusDTO = {
+  id: string;
+  slug: string | null;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+  address1: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+};
+
+/**
+ * Project a loaded campus row into the ONLY anonymous-safe campus shape. Fresh object,
+ * named keys only — a new column on `campuses` can never leak because no forbidden key
+ * is ever referenced. (The address keys are the intentional, documented exception above.)
+ */
+export function toPublicCampus(row: any): PublicCampusDTO {
+  return {
+    id: row?.id ?? null,
+    slug: row?.slug ?? null,
+    name: row?.name ?? "",
+    latitude: row?.latitude ?? null,
+    longitude: row?.longitude ?? null,
+    address1: row?.address1 ?? null,
+    city: row?.city ?? null,
+    state: row?.state ?? null,
+    zip: row?.zip ?? null
+  };
+}
+
+/** The ONLY shape an anonymous per-campus event read ever returns (EVT-01, display-only). */
+export type PublicCampusEventDTO = {
+  id: string;
+  title: string;
+  start: any;
+  end: any;
+  allDay: boolean;
+};
+
+/**
+ * Project a loaded event row into a display-only public shape (EVT-01). References ONLY
+ * id/title/start/end/allDay — never groupId, attendee data, description internals, or any
+ * tenant key. Fresh object, named keys only.
+ */
+export function toPublicCampusEvent(row: any): PublicCampusEventDTO {
+  return {
+    id: row?.id ?? null,
+    title: row?.title ?? "",
+    start: row?.start ?? null,
+    end: row?.end ?? null,
+    allDay: !!row?.allDay
+  };
+}
+
+/**
  * Generic positive projector: build a fresh object from ONLY the listed keys.
  *
  * For Plan 05 / Phase 20 reuse when projecting a whitelisted subset of a content row.

@@ -22,7 +22,7 @@ jest.mock("../PersonHelper.js", () => ({
   }
 }));
 
-import { toPublicLeader, resolvePublicPhoto, pickWhitelist, type PublicLeaderDTO } from "../PublicDto.js";
+import { toPublicLeader, resolvePublicPhoto, pickWhitelist, toPublicCampus, toPublicCampusEvent, type PublicLeaderDTO } from "../PublicDto.js";
 
 // The exhaustive set of keys a public DTO must NEVER carry. Adding a builder that emits any of
 // these makes the "no forbidden key" assertions below fail.
@@ -125,6 +125,120 @@ describe("anonymousLeak (PUB-02 leak gate) — whitelist DTOs never carry PII", 
     it("an UNKNOWN age (no/invalid birthDate) → photo is null (conservative)", () => {
       expect(resolvePublicPhoto({ id: "PER_x", churchId: "CH1", photoUpdated: new Date().toISOString() })).toBeNull();
       expect(resolvePublicPhoto({ id: "PER_x", churchId: "CH1", photoUpdated: new Date().toISOString(), birthDate: "not-a-date" })).toBeNull();
+    });
+  });
+
+  describe("toPublicCampus projects ONLY the whitelisted campus shape (SITE-02/03, MAP)", () => {
+    // A campus is a PUBLIC physical location: address1/city/state/zip ARE allowed here
+    // (rendered server-side). churchId / importKey / a private website / any person key
+    // must NEVER survive.
+    const ALLOWED_CAMPUS_KEYS = ["id", "slug", "name", "latitude", "longitude", "address1", "city", "state", "zip"];
+    // Forbidden set for a campus EXCLUDES the intentionally-public address columns.
+    const CAMPUS_FORBIDDEN_KEYS = ["churchId", "importKey", "email", "phone", "phoneNumber", "contactInfo", "householdId", "birthDate", "website", "country", "timezone", "removed"];
+
+    const leakyCampusRow: any = {
+      id: "CMP_1",
+      slug: "main-campus",
+      name: "Main Campus",
+      latitude: 40.1,
+      longitude: -74.2,
+      address1: "100 Church St",
+      city: "Trenton",
+      state: "NJ",
+      zip: "08608",
+      // ── everything below MUST NOT survive projection ──
+      churchId: "CH_secret",
+      importKey: "IMPORT_secret",
+      country: "US",
+      timezone: "America/New_York",
+      website: "https://private-admin.example",
+      email: "campus@example.com",
+      phone: "555-999-8888",
+      phoneNumber: "555-999-8888",
+      contactInfo: { email: "campus@example.com" },
+      householdId: "HH_x",
+      birthDate: new Date().toISOString(),
+      removed: false
+    };
+
+    const dto = toPublicCampus(leakyCampusRow);
+
+    it("emits EXACTLY the allowed campus keys (no widened projection)", () => {
+      expect(Object.keys(dto).sort()).toEqual([...ALLOWED_CAMPUS_KEYS].sort());
+    });
+
+    it("carries NONE of the forbidden tenant/PII keys (address keys are the one allowed exception)", () => {
+      for (const k of CAMPUS_FORBIDDEN_KEYS) {
+        expect(Object.prototype.hasOwnProperty.call(dto, k)).toBe(false);
+      }
+    });
+
+    it("no private VALUE survives serialization (churchId/importKey/website/PII)", () => {
+      const serialized = JSON.stringify(dto);
+      expect(serialized).not.toContain("CH_secret");
+      expect(serialized).not.toContain("IMPORT_secret");
+      expect(serialized).not.toContain("private-admin.example");
+      expect(serialized).not.toContain("campus@example.com");
+      expect(serialized).not.toContain("555-999-8888");
+      expect(serialized).not.toContain("HH_x");
+    });
+
+    it("still exposes the intended public location fields (slug/name/address survive)", () => {
+      expect(dto.id).toBe("CMP_1");
+      expect(dto.slug).toBe("main-campus");
+      expect(dto.name).toBe("Main Campus");
+      expect(dto.address1).toBe("100 Church St");
+      expect(dto.city).toBe("Trenton");
+      expect(dto.latitude).toBe(40.1);
+    });
+  });
+
+  describe("toPublicCampusEvent projects ONLY a display-only event shape (EVT-01)", () => {
+    const ALLOWED_EVENT_KEYS = ["id", "title", "start", "end", "allDay"];
+    const EVENT_FORBIDDEN_KEYS = ["groupId", "churchId", "attendeeIds", "description", "visibility", "formId", "requestedBy", "capacity"];
+
+    const leakyEventRow: any = {
+      id: "EVT_1",
+      title: "Sunday Service",
+      start: "2030-01-01T10:00:00Z",
+      end: "2030-01-01T11:00:00Z",
+      allDay: false,
+      // ── everything below MUST NOT survive projection ──
+      groupId: "GRP_secret",
+      churchId: "CH_secret",
+      attendeeIds: ["PER_1", "PER_2"],
+      description: "internal notes",
+      visibility: "private",
+      formId: "FORM_x",
+      requestedBy: "PER_admin",
+      capacity: 50
+    };
+
+    const dto = toPublicCampusEvent(leakyEventRow);
+
+    it("emits EXACTLY the allowed event keys", () => {
+      expect(Object.keys(dto).sort()).toEqual([...ALLOWED_EVENT_KEYS].sort());
+    });
+
+    it("carries NONE of the forbidden event keys (no groupId / attendee / tenant leak)", () => {
+      for (const k of EVENT_FORBIDDEN_KEYS) {
+        expect(Object.prototype.hasOwnProperty.call(dto, k)).toBe(false);
+      }
+    });
+
+    it("no private VALUE survives serialization", () => {
+      const serialized = JSON.stringify(dto);
+      expect(serialized).not.toContain("GRP_secret");
+      expect(serialized).not.toContain("CH_secret");
+      expect(serialized).not.toContain("PER_1");
+      expect(serialized).not.toContain("internal notes");
+      expect(serialized).not.toContain("FORM_x");
+    });
+
+    it("still exposes the intended display fields", () => {
+      expect(dto.id).toBe("EVT_1");
+      expect(dto.title).toBe("Sunday Service");
+      expect(dto.allDay).toBe(false);
     });
   });
 
