@@ -328,3 +328,24 @@ describe("anonymousLeak (PUB-02 leak gate) — whitelist DTOs never carry PII", 
     });
   });
 });
+
+describe("anonymousLeak: center announcements on the public content DTO (members round)", () => {
+  it("single and bulk reads carry only whitelisted announcement fields, only inside the date window", () => {
+    const now = new Date("2026-09-26T12:00:00Z");
+    const org: any = {
+      announcements: [
+        { id: "a1", title: "Network prayer night", body: "All centers", createdBy: "U_secret", authorEmail: "admin@private.org" },
+        { id: "a2", title: "Old news", body: "", endsOn: "2026-01-31" }
+      ]
+    };
+    const overrides: any = { CAM_A: { announcements: [{ id: "b1", title: "Chatham picnic", body: "Bring a dish", startsOn: "2026-09-01", endsOn: "2026-10-01", personId: "PER_secret" }] }, CAM_B: { announcements: HIDDEN } };
+    const all: any = resolveAllForChurch(org, overrides, ["CAM_A", "CAM_B", "CAM_C"], now);
+    expect(all.CAM_A.announcements).toEqual([{ id: "b1", title: "Chatham picnic", body: "Bring a dish", startsOn: "2026-09-01", endsOn: "2026-10-01" }]);
+    expect(all.CAM_B.announcements).toEqual([]);
+    expect(all.CAM_C.announcements).toEqual([{ id: "a1", title: "Network prayer night", body: "All centers" }]);
+    const single: any = toPublicCampusContent(org, now);
+    expect(single.announcements.map((a: any) => a.id)).toEqual(["a1"]);
+    const serialized = JSON.stringify(all) + JSON.stringify(single);
+    for (const secret of ["U_secret", "admin@private.org", "PER_secret", "Old news", HIDDEN]) expect(serialized).not.toContain(secret);
+  });
+});

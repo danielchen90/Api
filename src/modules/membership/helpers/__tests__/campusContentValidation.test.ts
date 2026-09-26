@@ -47,3 +47,58 @@ describe("campusContent write validation (photos + center contact fields)", () =
     expect(content.phone).toBe("");
   });
 });
+
+describe("center announcements (members round)", () => {
+  // Imported lazily so the file header stays as it was.
+  const { validateCampusContent: validate, currentAnnouncements, toPublicCampusContent, MAX_ANNOUNCEMENTS } = jest.requireActual("../CampusContentValidation.js");
+
+  it("cleans plain text, assigns ids, keeps optional dates", () => {
+    const { content, errors } = validate({
+      announcements: [
+        { title: "  Harvest <b>Sunday</b> ", body: "Bring food.\r\nLunch after.", startsOn: "2026-09-20", endsOn: "2026-10-12" },
+        { id: "keep-me", title: "New members class", body: "" },
+        { title: "", body: "", startsOn: "", endsOn: "" }
+      ]
+    });
+    expect(errors).toEqual([]);
+    expect(content.announcements).toHaveLength(2);
+    expect(content.announcements[0]).toMatchObject({ title: "Harvest Sunday", body: "Bring food.\nLunch after.", startsOn: "2026-09-20", endsOn: "2026-10-12" });
+    expect(content.announcements[0].id).toMatch(/^[A-Za-z0-9_-]{1,24}$/);
+    expect(content.announcements[1]).toEqual({ id: "keep-me", title: "New members class", body: "" });
+  });
+
+  it("enforces title 120, body 1500, max 10, valid dates and order", () => {
+    const tooMany = Array.from({ length: MAX_ANNOUNCEMENTS + 1 }, (_, i) => ({ title: "A" + i }));
+    expect(validate({ announcements: tooMany }).errors.join(" ")).toContain("at most 10");
+    const { errors } = validate({
+      announcements: [
+        { title: "x".repeat(121) },
+        { title: "ok", body: "y".repeat(1501) },
+        { title: "", body: "no title" },
+        { title: "bad", startsOn: "2026-02-30" },
+        { title: "backwards", startsOn: "2026-10-10", endsOn: "2026-10-01" }
+      ]
+    });
+    expect(errors).toHaveLength(5);
+    expect(validate({ announcements: "nope" }).errors).toEqual(["Announcements must be a list."]);
+    expect(validate({ announcements: HIDDEN }).errors).toEqual([]);
+  });
+
+  it("the public DTO keeps only announcements in their window (inclusive, time-zone generous)", () => {
+    const list = [
+      { id: "a", title: "Always", body: "" },
+      { id: "b", title: "Current", body: "", startsOn: "2026-09-20", endsOn: "2026-10-12" },
+      { id: "c", title: "Future", body: "", startsOn: "2026-12-01" },
+      { id: "d", title: "Past", body: "", endsOn: "2026-07-31" },
+      { id: "e", title: "Ends today", body: "", endsOn: "2026-09-26" },
+      { id: "f", title: "Starts today", body: "", startsOn: "2026-09-26" }
+    ];
+    const now = new Date("2026-09-26T12:00:00Z");
+    expect(currentAnnouncements(list, now).map((a: any) => a.id)).toEqual(["a", "b", "e", "f"]);
+    const dto: any = toPublicCampusContent({ announcements: [...list, { id: "z", title: "Leaky", body: "", secret: "S3CRET" } as any] }, now);
+    expect(dto.announcements.map((a: any) => a.id)).toEqual(["a", "b", "e", "f", "z"]);
+    expect(JSON.stringify(dto)).not.toContain("S3CRET");
+    for (const a of dto.announcements) for (const k of Object.keys(a)) expect(["id", "title", "body", "startsOn", "endsOn"]).toContain(k);
+    expect(toPublicCampusContent({ announcements: HIDDEN } as any, now).announcements).toEqual([]);
+  });
+});

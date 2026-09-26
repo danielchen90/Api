@@ -62,3 +62,23 @@ describe("campus gate constants resolve against real JWT permission strings", ()
     expect(checkAccess(CAMPUS_VIEWER, CAMPUS_ORGWIDE_MARKER)).toBe(false);
   });
 });
+
+describe("campus writer roles can manage calendar events (members round)", () => {
+  const { CAMPUS_ROLE_DESCRIPTORS, CAMPUS_EVENTS_PERMISSION, CAMPUS_ADMIN_ROLE, LEADERSHIP_ADMIN_ROLE, CAMPUS_VIEWER_ROLE, REPORTER_ROLE } = jest.requireActual("../campusRoles.js");
+  const perms = (name: string) => CAMPUS_ROLE_DESCRIPTORS.find((d: any) => d.name === name).permissions;
+
+  it("the events grant is ContentApi Content/Edit, so it lands in the ContentApi JWT bucket", () => {
+    expect(CAMPUS_EVENTS_PERMISSION).toEqual({ apiName: "ContentApi", contentType: "Content", action: "Edit" });
+  });
+
+  it("Campus Admin and Leadership Admin carry it; the read-only roles do not", () => {
+    expect(perms(CAMPUS_ADMIN_ROLE)).toContainEqual(CAMPUS_EVENTS_PERMISSION);
+    expect(perms(LEADERSHIP_ADMIN_ROLE)).toContainEqual(CAMPUS_EVENTS_PERMISSION);
+    expect(perms(CAMPUS_VIEWER_ROLE)).not.toContainEqual(CAMPUS_EVENTS_PERMISSION);
+    expect(perms(REPORTER_ROLE)).not.toContainEqual(CAMPUS_EVENTS_PERMISSION);
+  });
+
+  it("Campus Admin still does NOT get the org-wide marker", () => {
+    expect(perms(CAMPUS_ADMIN_ROLE)).not.toContainEqual(CAMPUS_ORGWIDE_MARKER);
+  });
+});

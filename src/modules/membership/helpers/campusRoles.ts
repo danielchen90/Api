@@ -82,6 +82,20 @@ const ROLES_VIEW = { contentType: "Roles", action: "View" } as const satisfies C
  */
 const MANAGE_SET: CampusRolePermission[] = [PEOPLE_VIEW, CAMPUS_WRITE_PERMISSION, HOUSEHOLDS_EDIT, GROUPS_VIEW, GROUPS_EDIT, ROLES_VIEW];
 
+/**
+ * Calendar events for the two writer roles (members round, 2026-09). Every event and calendar
+ * endpoint in the content module (create, edit, delete, recurring exceptions, curated calendars)
+ * and every B1Admin calendar screen is gated on the ContentApi `Content__Edit` permission, so this
+ * is the one permission that lets a Campus Admin create, edit and delete events. WHICH center an
+ * event may be published to is still limited by the round-1 listing guard (content EventController
+ * + canWriteListing, scope rebuilt from the DB). This one CARRIES apiName "ContentApi" on purpose:
+ * it must land in the ContentApi JWT bucket (B1Admin sends the ContentApi JWT to /content/*); the
+ * unprefixed-constant rule above applies to the membership gates, not to this seed row.
+ * Side effect to know: Content/Edit is the stock ChurchApps content permission, so it also opens
+ * the website pages, sermons, songs and files screens in B1Admin.
+ */
+export const CAMPUS_EVENTS_PERMISSION = { apiName: "ContentApi", contentType: "Content", action: "Edit" } as const satisfies CampusRolePermission;
+
 // Read-only set (only *__View permissions; no Edit → mutation endpoints 401 via checkAccess).
 const VIEW_SET: CampusRolePermission[] = [PEOPLE_VIEW, GROUPS_VIEW];
 
@@ -104,8 +118,8 @@ export interface CampusRoleDescriptor {
  *   - Reporter:         view set  + marker    → org-wide read-only
  */
 export const CAMPUS_ROLE_DESCRIPTORS: CampusRoleDescriptor[] = [
-  { name: LEADERSHIP_ADMIN_ROLE, permissions: [...MANAGE_SET, CAMPUS_ORGWIDE_MARKER] },
-  { name: CAMPUS_ADMIN_ROLE, permissions: [...MANAGE_SET] },
+  { name: LEADERSHIP_ADMIN_ROLE, permissions: [...MANAGE_SET, CAMPUS_ORGWIDE_MARKER, CAMPUS_EVENTS_PERMISSION] },
+  { name: CAMPUS_ADMIN_ROLE, permissions: [...MANAGE_SET, CAMPUS_EVENTS_PERMISSION] },
   { name: CAMPUS_VIEWER_ROLE, permissions: [...VIEW_SET] },
   { name: REPORTER_ROLE, permissions: [...VIEW_SET, CAMPUS_ORGWIDE_MARKER] }
 ];

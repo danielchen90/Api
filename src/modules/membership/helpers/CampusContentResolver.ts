@@ -43,6 +43,16 @@ export interface ExtraLink {
 // FilesManager reference (file id / URL) — NEVER image bytes. `serviceTimes` and
 // `extraLinks` are whole-list-replaced. `HIDDEN` may appear in place of any field
 // on a campus override to force the resolved value blank.
+// Center announcements (members round): plain text, optional show-from / show-until dates
+// (YYYY-MM-DD, inclusive). The public DTO keeps only those whose window includes today.
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  startsOn?: string | null;
+  endsOn?: string | null;
+}
+
 export interface CampusContentFields {
   // Copy blocks.
   mission?: string | typeof HIDDEN;
@@ -71,10 +81,11 @@ export interface CampusContentFields {
   email?: string | typeof HIDDEN;
   // "Your first visit" copy: plain text with line breaks.
   whatToExpect?: string | typeof HIDDEN;
+  announcements?: Announcement[] | typeof HIDDEN;
 }
 
 // Blank value for a hidden field: [] for list fields, "" for everything else.
-const LIST_FIELDS: ReadonlyArray<keyof CampusContentFields> = ["serviceTimes", "extraLinks", "photos"];
+const LIST_FIELDS: ReadonlyArray<keyof CampusContentFields> = ["serviceTimes", "extraLinks", "photos", "announcements"];
 const blankFor = (field: keyof CampusContentFields): any => (LIST_FIELDS.includes(field) ? [] : "");
 
 // Resolve one campus's rendered content from the org default + that campus's

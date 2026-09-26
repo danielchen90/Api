@@ -119,6 +119,22 @@ export class AuthenticatedUser extends BaseAuthenticatedUser {
     return jwt.sign({ id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName }, Environment.jwtSecret, { expiresIn: "180 days" });
   }
 
+  /**
+   * Short-lived login token handed out by POST /users/mbidLogin. It travels once in a URL
+   * (/login?jwt=...) and is exchanged by POST /users/login { jwt } for a normal session, so it
+   * lives at most MBID_LOGIN_TTL and carries purpose "mbid_login"; CustomAuthProvider refuses it
+   * as a Bearer credential, so it can only ever be used to log in.
+   */
+  public static MBID_LOGIN_TTL_SECONDS = 300;
+
+  public static getMbidLoginJwt(user: User) {
+    return jwt.sign(
+      { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, purpose: "mbid_login" },
+      Environment.jwtSecret,
+      { expiresIn: AuthenticatedUser.MBID_LOGIN_TTL_SECONDS }
+    );
+  }
+
   public static setJwt(allUserChurches: LoginUserChurch[], user: User) {
     allUserChurches.forEach((uc) => {
       uc.apis?.forEach((api) => {

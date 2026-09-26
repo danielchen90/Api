@@ -50,3 +50,4 @@ export { PrintBatchController } from "./PrintBatchController.js";
 export { LeadershipReportController } from "./LeadershipReportController.js";
 export { AudienceController } from "./AudienceController.js";
 export { AccessLogController } from "./AccessLogController.js";
+export { MeController } from "./MeController.js";

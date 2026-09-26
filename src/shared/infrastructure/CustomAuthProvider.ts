@@ -97,7 +97,11 @@ export class CustomAuthProvider extends BaseAuthProvider {
       if (token && token.startsWith("cak_")) {
         return await this.getUserFromApiKey(token);
       }
-      return await super.getUser(req, res, next);
+      const principal = await super.getUser(req, res, next);
+      // The Mary Banks ID login token (purpose "mbid_login", 5 minutes, travels in a URL) may only
+      // be exchanged at POST /membership/users/login; it is never a Bearer credential.
+      if (principal?.details?.purpose === "mbid_login") return null;
+      return principal;
     } catch {
       // jwt.verify throws on an invalid/expired token — treat as unauthenticated.
       return null;

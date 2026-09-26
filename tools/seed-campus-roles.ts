@@ -28,8 +28,29 @@ function findRoleByName(roles: Role[], name: string): Role | undefined {
   return roles.find((r) => r.name === name);
 }
 
+// apiName is NULL in the DB for the unprefixed campus permissions but undefined on the descriptor,
+// so compare both sides normalized to null (a strict === here re-added every permission on each run).
+function samePermission(e: RolePermission, p: CampusRolePermission): boolean {
+  return (e.apiName ?? null) === (p.apiName ?? null) && e.contentType === p.contentType && e.action === p.action && !(e as any).contentId;
+}
+
 function permissionExists(existing: RolePermission[], p: CampusRolePermission): boolean {
-  return existing.some((e) => e.apiName === p.apiName && e.contentType === p.contentType && e.action === p.action);
+  return existing.some((e) => samePermission(e, p));
+}
+
+// Earlier runs of this seed (before the null/undefined fix above) stored duplicate rows. They are
+// harmless (permission loading GROUPs BY), but remove exact duplicates of the seeded set, keeping one.
+async function removeDuplicates(repos: Repos, churchId: string, roleId: string, permissions: CampusRolePermission[]): Promise<number> {
+  const existing = await repos.rolePermission.loadByRoleId(churchId, roleId);
+  let removed = 0;
+  for (const p of permissions) {
+    const copies = existing.filter((e) => samePermission(e, p));
+    for (const extra of copies.slice(1)) {
+      await repos.rolePermission.delete(churchId, extra.id);
+      removed++;
+    }
+  }
+  return removed;
 }
 
 async function ensureRoleWithPermissions(repos: Repos, churchId: string, churchRoles: Role[], descriptorName: string, permissions: CampusRolePermission[]) {
@@ -56,7 +77,8 @@ async function ensureRoleWithPermissions(repos: Repos, churchId: string, churchR
     permsAdded++;
   }
 
-  return { role, created, permsAdded };
+  const duplicatesRemoved = await removeDuplicates(repos, churchId, role.id, permissions);
+  return { role, created, permsAdded, duplicatesRemoved };
 }
 
 async function promoteOwners(repos: Repos, churchId: string, churchRoles: Role[]): Promise<number> {
@@ -96,15 +118,17 @@ async function seedCampusRoles() {
 
       let rolesCreated = 0;
       let permsAdded = 0;
+      let duplicatesRemoved = 0;
       for (const descriptor of CAMPUS_ROLE_DESCRIPTORS) {
         const result = await ensureRoleWithPermissions(repos, churchId, churchRoles, descriptor.name, descriptor.permissions);
         if (result.created) rolesCreated++;
         permsAdded += result.permsAdded;
+        duplicatesRemoved += result.duplicatesRemoved;
       }
 
       const promoted = await promoteOwners(repos, churchId, churchRoles);
 
-      console.log(`Church ${church.name || churchId}: ${rolesCreated} role(s) created, ${permsAdded} permission(s) added, ${promoted} owner(s) promoted to Leadership Admin.`);
+      console.log(`Church ${church.name || churchId}: ${rolesCreated} role(s) created, ${permsAdded} permission(s) added, ${duplicatesRemoved} duplicate(s) removed, ${promoted} owner(s) promoted to Leadership Admin.`);
     }
 
     console.log("========================================");

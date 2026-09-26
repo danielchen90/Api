@@ -4,9 +4,23 @@ import { GivingBaseController } from "./GivingBaseController.js";
 import { Permissions } from "../../../shared/helpers/Permissions.js";
 import { GatewayService } from "../../../shared/helpers/GatewayService.js";
 import { EncryptionHelper } from "@churchapps/apihelper";
+import { SubscriptionListHelper } from "../helpers/SubscriptionListHelper.js";
 
 @controller("/giving/subscriptions")
 export class SubscriptionController extends GivingBaseController {
+  // The signed-in member's own recurring gifts (My Church). Declared before "/:id" so "my" is never
+  // read as an id. No person on the session, or no customer record yet -> [].
+  @httpGet("/my")
+  public async getMine(req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!au?.id || !au.churchId) return this.json([], 401);
+      if (!au.personId) return [];
+      const customer: any = await this.repos.customer.loadByPersonId(au.churchId, au.personId);
+      if (!customer?.id) return [];
+      return SubscriptionListHelper.load(this.repos, au.churchId, customer.id, au.personId);
+    });
+  }
+
   @httpGet("/:id")
   public async get(@requestParam("id") id: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {

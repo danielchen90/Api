@@ -10,6 +10,11 @@ import { EmailHelper, UserHelper, UserChurchHelper, UniqueIdHelper, Environment,
 import { v4 } from "uuid";
 import { ChurchHelper } from "../helpers/index.js";
 import { ArrayHelper } from "@churchapps/apihelper";
+import { MbidTokenVerifier, MbidTokenError } from "../helpers/mbid/MbidTokenVerifier.js";
+import { MemberError } from "../helpers/mbid/MemberAccountService.js";
+import { buildMemberAccountService } from "../helpers/mbid/MemberServiceFactory.js";
+import { FixedWindowLimiter } from "../../../shared/helpers/FixedWindowLimiter.js";
+import { PublicReadLimiter } from "../../../shared/helpers/PublicReadLimiter.js";
 
 const emailPasswordValidation = [
   body("email").isEmail().trim().normalizeEmail({ gmail_remove_dots: false }).withMessage("enter a valid email address"),
@@ -110,6 +115,42 @@ export class UserController extends MembershipBaseController {
           throw e;
         }
         return this.error([e.toString()]);
+      }
+    });
+  }
+
+  // Per-IP budget for Mary Banks ID sign-ins. The public site calls server-side, so many members
+  // can share one IP: the budget is generous and only brakes abuse.
+  public static mbidLimiter = new FixedWindowLimiter(120, 60 * 1000);
+
+  /**
+   * POST /membership/users/mbidLogin { idToken, subDomain } (anonymous).
+   * Verifies a Mary Banks ID token (JWKS signature, issuer, audience/azp, expiry, email_verified),
+   * finds or links or creates the ChurchApps user, joins them to the church and links their
+   * church record when exactly one unlinked person carries their primary email. Answers with a
+   * 5-minute login token for POST /users/login { jwt }.
+   * Not an account oracle: a bad or unverified token is refused before any lookup, and every
+   * valid token gets the same { jwt, firstName } shape whether the account existed or not.
+   */
+  @httpPost("/mbidLogin")
+  public async mbidLogin(req: express.Request<{}, {}, { idToken?: string; subDomain?: string }>, res: express.Response): Promise<any> {
+    return this.actionWrapperAnon(req, res, async () => {
+      if (!UserController.mbidLimiter.allow(PublicReadLimiter.clientIp(req))) return this.json({ error: "too_many" }, 429);
+      const body: any = req.body || {};
+      let claims;
+      try {
+        claims = await MbidTokenVerifier.verify(typeof body.idToken === "string" ? body.idToken : "");
+      } catch (e) {
+        if (e instanceof MbidTokenError && e.code === "email_unverified") return this.json({ error: "email_unverified" }, 403);
+        return this.json({ error: "invalid_token" }, 401);
+      }
+      try {
+        const ip = AuditLogHelper.getClientIp(req);
+        const result = await buildMemberAccountService(this.repos, ip).signIn(claims, typeof body.subDomain === "string" ? body.subDomain : "", ip);
+        return this.json({ jwt: AuthenticatedUser.getMbidLoginJwt(result.user), firstName: result.user.firstName || "" }, 200);
+      } catch (e) {
+        if (e instanceof MemberError) return this.json({ error: e.code }, e.status);
+        throw e;
       }
     });
   }
