@@ -6,7 +6,8 @@ import { AuditLogHelper } from "../helpers/AuditLogHelper.js";
 import { FormSubmission } from "../models/index.js";
 
 /**
- * PublicFormSubmissionController — the login-free prayer/contact submit (FRM-01/02/04).
+ * PublicFormSubmissionController: the login-free prayer/contact submit (FRM-01/02/04), extended
+ * with the Next Steps types (visit, salvation, baptism, serve, discipleship) in the 2026-09 redesign.
  *
  * ANONYMOUS: `POST /membership/public/:churchId/:campusId/submit` wrapped in
  * `actionWrapperAnon` (no `au`). A visitor submits a prayer request or contact message
@@ -32,7 +33,8 @@ import { FormSubmission } from "../models/index.js";
  */
 @controller("/membership/public")
 export class PublicFormSubmissionController extends MembershipBaseController {
-  private static VALID_TYPES = ["prayer", "contact"];
+  // prayer | contact (Phase 20) + the Next Steps types: visit | salvation | baptism | serve | discipleship.
+  private static VALID_TYPES = PublicFormSubmissionHelper.VALID_TYPES;
 
   @httpPost("/:churchId/:campusId/submit")
   public async submit(
@@ -66,7 +68,17 @@ export class PublicFormSubmissionController extends MembershipBaseController {
       if (!PublicFormSubmissionController.VALID_TYPES.includes(submissionType)) {
         return this.json({ error: "Invalid submission type." }, 400);
       }
-      if (!name || !email || !message) return this.json({ error: "Name, email and message are required." }, 400);
+      const messageRequired = PublicFormSubmissionHelper.MESSAGE_REQUIRED_TYPES.includes(submissionType);
+      if (messageRequired && (!name || !email || !message)) return this.json({ error: "Name, email and message are required." }, 400);
+      if (!name || !email) return this.json({ error: "Name and email are required." }, 400);
+
+      // Type-specific extras. Only "visit" carries any today (visitDate / partySize / notes).
+      let extra: Record<string, any> | null = null;
+      if (submissionType === "visit") {
+        const v = PublicFormSubmissionHelper.validateVisitExtra(body);
+        if (v.error) return this.json({ error: v.error }, 400);
+        extra = v.extra ?? null;
+      }
 
       // 4. Store the MINIMAL login-free submission. churchId/campusId are trusted-route
       //    DATA TAGS; createPublic writes only the minimal columns (no formId/answers).
@@ -77,7 +89,8 @@ export class PublicFormSubmissionController extends MembershipBaseController {
       sub.submitterName = name;
       sub.submitterEmail = email;
       sub.submitterPhone = phone;
-      sub.message = message;
+      sub.message = message || undefined;
+      sub.extra = extra;
       await this.repos.formSubmission.createPublic(sub);
 
       return { ok: true };

@@ -5,9 +5,12 @@ import { Permissions } from "../helpers/index.js";
 import { CampusScopeHelper } from "../helpers/CampusScopeHelper.js";
 import { assertWritableCampus } from "../helpers/applyCampusScope.js";
 import { resolveForCampus, HIDDEN, type CampusContentFields } from "../helpers/CampusContentResolver.js";
-import { pickWhitelist } from "../helpers/PublicDto.js";
+import { CAMPUS_CONTENT_KEYS, validateCampusContent, toPublicCampusContent, resolveAllForChurch } from "../helpers/CampusContentValidation.js";
+import { CAMPUS_WRITE_PERMISSION } from "../helpers/campusRoles.js";
+import { PublicReadLimiter } from "../../../shared/helpers/PublicReadLimiter.js";
+import { Environment } from "../../../shared/helpers/Environment.js";
 import { CampusContent } from "../models/index.js";
-import { UniqueIdHelper } from "@churchapps/apihelper";
+import { FileStorageHelper, UniqueIdHelper } from "@churchapps/apihelper";
 
 /**
  * CampusContentController — the CMS-01 ENDPOINT half (Plan 05).
@@ -41,22 +44,37 @@ export class CampusContentController extends MembershipBaseController {
   // The one contentType the whole public-website field-set is stored under.
   private static SITE_CONTENT_TYPE = "site";
 
-  // The exact whitelist of publishable content keys — the ONLY keys that can ever reach the
-  // anonymous surface. A stray/new DB column can never leak because it is never named here.
-  private static CONTENT_KEYS: (keyof CampusContentFields)[] = [
-    "mission",
-    "about",
-    "welcomeNote",
-    "pastorNote",
-    "heroImage",
-    "serviceTimes",
-    "facebookUrl",
-    "instagramUrl",
-    "youtubeUrl",
-    "givingUrl",
-    "sermonYoutubeChannel",
-    "extraLinks"
-  ];
+  // The exact whitelist of publishable content keys, the ONLY keys that can ever reach the
+  // anonymous surface (single source of truth: CampusContentValidation.CAMPUS_CONTENT_KEYS).
+  private static CONTENT_KEYS: (keyof CampusContentFields)[] = CAMPUS_CONTENT_KEYS;
+
+  // ── Anonymous BULK read: every campus of the church resolved at once ──
+  // GET /membership/campusContent/public/:churchId/all -> { [campusId]: resolvedContent }.
+  // DECLARED BEFORE "/public/:churchId/:campusId" so the literal "all" is never read as a campusId.
+  // Same whitelist + HIDDEN redaction as the single reads. Unknown church -> {} (no campuses).
+  @httpGet("/public/:churchId/all")
+  public async publicAll(
+    @requestParam("churchId") churchId: string,
+    req: express.Request,
+    res: express.Response
+  ): Promise<any> {
+    return this.actionWrapperAnon(req, res, async () => {
+      if (!PublicReadLimiter.allow(PublicReadLimiter.clientIp(req), "campusContent")) return this.json({ error: "Too many requests." }, 429);
+      PublicReadLimiter.setCacheHeaders(res);
+      if (!churchId) return {};
+      const campuses = ((await this.repos.campus.loadPublicList(churchId)) as any[]) || [];
+      if (campuses.length === 0) return {};
+      const contentType = CampusContentController.SITE_CONTENT_TYPE;
+      const rows = (await this.repos.campusContent.loadAllForChurch(churchId)).filter((r) => r && r.contentType === contentType);
+      let orgFields: CampusContentFields | null = null;
+      const overrides: Record<string, CampusContentFields | null> = {};
+      for (const row of rows) {
+        if (!row.campusId) orgFields = CampusContentController.parseContent(row);
+        else overrides[row.campusId] = CampusContentController.parseContent(row);
+      }
+      return resolveAllForChurch(orgFields, overrides, campuses.map((c) => c.id));
+    });
+  }
 
   // ── Anonymous public read: resolved-for-campus content as a redacting whitelist DTO ──
   // Campus variant: org default overlaid with THIS campus's override, field-by-field.
@@ -67,7 +85,11 @@ export class CampusContentController extends MembershipBaseController {
     req: express.Request,
     res: express.Response
   ): Promise<any> {
-    return this.actionWrapperAnon(req, res, async () => this.resolvePublic(churchId, campusId));
+    return this.actionWrapperAnon(req, res, async () => {
+      if (!PublicReadLimiter.allow(PublicReadLimiter.clientIp(req), "campusContent")) return this.json({ error: "Too many requests." }, 429);
+      PublicReadLimiter.setCacheHeaders(res);
+      return this.resolvePublic(churchId, campusId);
+    });
   }
 
   // Campus-less variant: the org default resolved (no campus override applied).
@@ -77,7 +99,11 @@ export class CampusContentController extends MembershipBaseController {
     req: express.Request,
     res: express.Response
   ): Promise<any> {
-    return this.actionWrapperAnon(req, res, async () => this.resolvePublic(churchId, null));
+    return this.actionWrapperAnon(req, res, async () => {
+      if (!PublicReadLimiter.allow(PublicReadLimiter.clientIp(req), "campusContent")) return this.json({ error: "Too many requests." }, 429);
+      PublicReadLimiter.setCacheHeaders(res);
+      return this.resolvePublic(churchId, null);
+    });
   }
 
   // Shared resolve+project so both anon variants return the IDENTICAL clean DTO shape.
@@ -99,7 +125,8 @@ export class CampusContentController extends MembershipBaseController {
 
     // Project through the positive whitelist — NEVER the raw repo row (no id/version/churchId/
     // campusId/timestamps). A stray column can never leak (criterion 6, the data-safety gate).
-    return pickWhitelist<CampusContentFields>(resolved, CampusContentController.CONTENT_KEYS);
+    // toPublicCampusContent also renders any stray HIDDEN sentinel blank.
+    return toPublicCampusContent(resolved);
   }
 
   // ── Authenticated, church+campus-SCOPED write (Phase 21 authors against this) ──
@@ -111,8 +138,7 @@ export class CampusContentController extends MembershipBaseController {
   @httpPost("/")
   public async save(req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      // UNPREFIXED Content/Edit gate (campus-auth-perms-unprefixed: a prefixed constant 401s).
-      if (!au.checkAccess(Permissions.content.edit)) return this.json({}, 401);
+      if (!CampusContentController.canAuthor(au)) return this.json({}, 401);
 
       const body: any = req.body ?? {};
       // NULL campusId = org-default write. Never trust it without the scope guard below.
@@ -130,7 +156,10 @@ export class CampusContentController extends MembershipBaseController {
 
       // Normalize the incoming fields: strip EMPTY override fields so a cleared/blank campus edit
       // re-inherits the org default rather than persisting an empty value. HIDDEN is preserved.
-      const fields = CampusContentController.normalizeOverride(body.content, campusId);
+      // Field validation (photos / leaders / phone / email / whatToExpect). 400 with readable errors.
+      const validation = validateCampusContent(body.content);
+      if (validation.errors.length > 0) return this.json({ errors: validation.errors }, 400);
+      const fields = CampusContentController.normalizeOverride(validation.content, campusId);
 
       // Locate an existing row for this (church, campusId, contentType) to decide create-vs-update.
       const existing =
@@ -166,6 +195,70 @@ export class CampusContentController extends MembershipBaseController {
           : await this.repos.campusContent.loadForCampus(au.churchId, campusId, contentType);
       return this.repos.campusContent.convertToModel(au.churchId, fresh);
     });
+  }
+
+  // ── Authenticated, SCOPED authoring read (B1Admin editor) ──
+  // GET /membership/campusContent/admin?campusId=X
+  //   - always returns the org default (it is public content anyway) so the editor can show
+  //     inherited values as placeholders;
+  //   - returns the campus's own sparse override only when campusId is within the caller's scope
+  //     (a campus-A admin asking for campus B gets 401, the same rule as the write).
+  //   - canEditOrgDefault tells the UI whether to offer the org-default editor.
+  @httpGet("/admin")
+  public async adminRead(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!CampusContentController.canAuthor(au)) return this.json({}, 401);
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      const campusId = req.query.campusId ? req.query.campusId.toString() : null;
+      if (campusId && !assertWritableCampus(scope, campusId)) return this.json({}, 401);
+      const contentType = CampusContentController.SITE_CONTENT_TYPE;
+      const orgRow = await this.repos.campusContent.loadOrgDefault(au.churchId, contentType);
+      const campusRow = campusId ? await this.repos.campusContent.loadForCampus(au.churchId, campusId, contentType) : null;
+      return {
+        canEditOrgDefault: scope.mode === "all",
+        writableCampusIds: scope.mode === "all" ? "all" : scope.mode === "scoped" ? scope.campusIds : [],
+        orgDefault: { content: CampusContentController.parseContent(orgRow) ?? {}, version: orgRow?.version ?? null },
+        campus: campusId ? { campusId, content: CampusContentController.parseContent(campusRow) ?? {}, version: campusRow?.version ?? null } : null
+      };
+    });
+  }
+
+  // ── Authenticated, SCOPED photo upload (hero image + gallery photos) ──
+  // POST /membership/campusContent/photo  { campusId?: string|null, dataUrl: "data:image/jpeg;base64,..." }
+  // Stores the (already cropped) image through FileStorageHelper (disk or S3, whichever the Api
+  // runs) under /{churchId}/membership/campusContent/{campusId|org}/{id}.jpg and returns the
+  // absolute URL for the editor to put into `photos` / `heroImage`. Same gate + scope as the write.
+  @httpPost("/photo")
+  public async uploadPhoto(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapper(req, res, async (au) => {
+      if (!CampusContentController.canAuthor(au)) return this.json({}, 401);
+      const body: any = req.body ?? {};
+      const campusId: string | null = body.campusId ?? null;
+      const scope = await CampusScopeHelper.resolve(au, this.repos);
+      if (!assertWritableCampus(scope, campusId ?? CampusContentController.ORG_WIDE_TARGET)) return this.json({}, 401);
+
+      const dataUrl: string = typeof body.dataUrl === "string" ? body.dataUrl : "";
+      const match = /^data:(image\/(jpeg|png|webp));base64,(.+)$/.exec(dataUrl);
+      if (!match) return this.json({ errors: ["Please upload a JPG, PNG or WebP image."] }, 400);
+      const buffer = Buffer.from(match[3], "base64");
+      if (buffer.length === 0) return this.json({ errors: ["The image is empty."] }, 400);
+      if (buffer.length > 8 * 1024 * 1024) return this.json({ errors: ["The image is too large (8 MB max)."] }, 400);
+
+      const ext = match[2] === "jpeg" ? "jpg" : match[2];
+      const folder = campusId ?? "org";
+      const key = "/" + au.churchId + "/membership/campusContent/" + folder + "/" + UniqueIdHelper.shortId() + "." + ext;
+      await FileStorageHelper.store(key, match[1], buffer);
+      const root = (Environment.contentRoot || "").replace(/\/+$/, "");
+      return { url: root + key };
+    });
+  }
+
+  // Authoring gate. Either the Content/Edit permission (content editors) or the campus WRITE
+  // permission (Leadership Admin + Campus Admin hold it). Both are UNPREFIXED (campus-auth-perms-
+  // unprefixed: a prefixed constant 401s). The campus SCOPE check that follows is what limits a
+  // Campus Admin to their own campus; this gate only decides who may author at all.
+  private static canAuthor(au: any): boolean {
+    return au.checkAccess(Permissions.content.edit) || au.checkAccess(CAMPUS_WRITE_PERMISSION);
   }
 
   // Parse a repo row's JSON `content` string into the typed field-set. Missing row / bad JSON →

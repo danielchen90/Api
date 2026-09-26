@@ -95,3 +95,6 @@ layers/
 .env
 
 playground-app/.yarn/
+
+# Local file store (FILE_STORE=disk) uploads
+/content/

@@ -31,6 +31,7 @@ export class UserHelper {
 
   public static syncCrossModulePermissions(lucs: LoginUserChurch[]) {
     lucs.forEach((luc) => {
+      UserHelper.foldUnscopedIntoMembership(luc);
       const has = (keyName: string) => {
         const api = ArrayHelper.getOne(luc.apis, "keyName", keyName);
         if (api === null) return false;
@@ -49,6 +50,29 @@ export class UserHelper {
       const inMembership = has("MembershipApi");
       if (inDoing && !inMembership) add("MembershipApi");
       if (inMembership && !inDoing) add("DoingApi");
+    });
+  }
+
+  // The fork's campus roles (Leadership Admin, Campus Admin, Campus Viewer, Reporter; seeded by
+  // tools/seed-campus-roles.ts) store their rolePermissions with apiName NULL, so at login they land
+  // in an API bucket with NO keyName. B1Admin sends the MembershipApi JWT to /membership/*, which
+  // therefore never carried Campus__Admin / People__Edit for those roles: org-wide admins resolved to
+  // campus scope "deny" and Campus Admins were 401 on every campus-scoped write. Fold the unscoped
+  // bucket into MembershipApi (add-if-missing; the unscoped bucket itself is left as it was), which is
+  // what campusRoles.ts documents as the intent ("membership permissions, unprefixed").
+  public static foldUnscopedIntoMembership(luc: LoginUserChurch) {
+    const unscoped = (luc?.apis || []).filter((a) => !a.keyName);
+    if (unscoped.length === 0) return;
+    let membership = ArrayHelper.getOne(luc.apis, "keyName", "MembershipApi");
+    if (membership === null) {
+      membership = { keyName: "MembershipApi", permissions: [] };
+      luc.apis.push(membership);
+    }
+    unscoped.forEach((api) => {
+      (api.permissions || []).forEach((perm) => {
+        const exists = membership.permissions.some((p) => p.contentType === perm.contentType && p.action === perm.action && (p.contentId || "") === (perm.contentId || ""));
+        if (!exists) membership.permissions.push({ action: perm.action, contentType: perm.contentType, contentId: perm.contentId });
+      });
     });
   }
 

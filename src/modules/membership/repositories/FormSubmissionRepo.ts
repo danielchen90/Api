@@ -56,6 +56,7 @@ export class FormSubmissionRepo {
       submitterEmail: sub.submitterEmail ?? null,
       submitterPhone: sub.submitterPhone ?? null,
       message: sub.message ?? null,
+      extra: sub.extra ? JSON.stringify(sub.extra) : null,
       submissionDate: submissionDate as any
     } as any).execute();
     sub.unread = true;
@@ -68,12 +69,13 @@ export class FormSubmissionRepo {
   // server-side from the requesting admin (CampusScopeHelper), NEVER from the request.
   public async loadInboxScoped(churchId: string, scope: CampusScope) {
     let q = getDb().selectFrom("formSubmissions")
-      .select(["id", "campusId", "submissionType", "submitterName", "submissionDate", "unread"])
+      .select(["id", "campusId", "submissionType", "submitterName", "submissionDate", "unread", "extra"])
       .where("churchId", "=", churchId)
       .where("submissionType", "is not", null as any)
       .orderBy("submissionDate", "desc");
     q = applyCampusScope(q, scope);
-    return q.execute();
+    const rows = await q.execute();
+    return rows.map((r: any) => ({ ...r, extra: FormSubmissionRepo.parseExtra(r.extra) }));
   }
 
   // Campus-scoped inbox DETAIL. Same churchId-first-then-scope shape; an out-of-scope id
@@ -152,8 +154,15 @@ export class FormSubmissionRepo {
       submitterName: row.submitterName,
       submitterEmail: row.submitterEmail,
       submitterPhone: row.submitterPhone,
-      message: row.message
+      message: row.message,
+      extra: FormSubmissionRepo.parseExtra(row.extra)
     };
+  }
+
+  public static parseExtra(raw: any): Record<string, any> | null {
+    if (raw === undefined || raw === null || raw === "") return null;
+    if (typeof raw === "object") return raw;
+    try { return JSON.parse(raw); } catch { return null; }
   }
 
   public convertToModel(_churchId: string, data: any) {

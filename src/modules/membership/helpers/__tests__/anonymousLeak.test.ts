@@ -23,6 +23,8 @@ jest.mock("../PersonHelper.js", () => ({
 }));
 
 import { toPublicLeader, resolvePublicPhoto, pickWhitelist, toPublicCampus, toPublicCampusEvent, type PublicLeaderDTO } from "../PublicDto.js";
+import { toPublicCampusContent, resolveAllForChurch, CAMPUS_CONTENT_KEYS } from "../CampusContentValidation.js";
+import { HIDDEN } from "../CampusContentResolver.js";
 
 // The exhaustive set of keys a public DTO must NEVER carry. Adding a builder that emits any of
 // these makes the "no forbidden key" assertions below fail.
@@ -258,6 +260,71 @@ describe("anonymousLeak (PUB-02 leak gate) — whitelist DTOs never carry PII", 
     it("returns an empty object for a null/undefined row (never throws on a missing source)", () => {
       expect(pickWhitelist<PublicLeaderDTO>(null, ["id"])).toEqual({});
       expect(pickWhitelist<PublicLeaderDTO>(undefined, ["id"])).toEqual({});
+    });
+  });
+
+  describe("campusContent public DTO (single + bulk /all) projects ONLY whitelisted content keys", () => {
+    // The center's contact block (leaders/phone/email) is DELIBERATELY public, like a campus
+    // address: it is typed by an admin into the center's public page, never read from a Person row.
+    // What must never survive is the storage row itself (id/version/churchId/campusId/timestamps/
+    // campusKey), any person key, or the HIDDEN sentinel string.
+    const ROW_KEYS = ["id", "churchId", "campusId", "campusKey", "contentType", "version", "createdAt", "updatedAt"];
+    const PERSON_KEYS = ["householdId", "birthDate", "contactInfo", "personId", "nationalId", "address1"];
+
+    const leakyResolved: any = {
+      mission: "Teach the Word",
+      photos: ["https://cdn.example.org/a.jpg", "https://cdn.example.org/b.jpg"],
+      leaders: "Pastors John and Mary Smith",
+      phone: "555-0100",
+      email: "center@example.org",
+      whatToExpect: "Parking in back.\nService lasts 90 minutes.",
+      heroImage: HIDDEN,
+      // ── must NOT survive ──
+      id: "CC_secret", churchId: "CH_secret", campusId: "CAM_secret", campusKey: "~ORG~", contentType: "site",
+      version: 7, createdAt: "2026-01-01", updatedAt: "2026-01-02",
+      householdId: "HH_secret", birthDate: "1980-01-01", contactInfo: { email: "private@example.com" },
+      personId: "PER_secret", nationalId: "AAA-BB-CCCC", address1: "1 Private Ln"
+    };
+
+    it("emits only CAMPUS_CONTENT_KEYS, including the new gallery + contact fields", () => {
+      const dto = toPublicCampusContent(leakyResolved);
+      for (const k of Object.keys(dto)) expect(CAMPUS_CONTENT_KEYS).toContain(k);
+      for (const k of [...ROW_KEYS, ...PERSON_KEYS]) expect(Object.prototype.hasOwnProperty.call(dto, k)).toBe(false);
+      expect(dto.photos).toEqual(["https://cdn.example.org/a.jpg", "https://cdn.example.org/b.jpg"]);
+      expect(dto.leaders).toBe("Pastors John and Mary Smith");
+      expect(dto.phone).toBe("555-0100");
+      expect(dto.email).toBe("center@example.org");
+      expect(dto.whatToExpect).toContain("90 minutes");
+    });
+
+    it("never serializes a private value or the HIDDEN sentinel", () => {
+      const serialized = JSON.stringify(toPublicCampusContent(leakyResolved));
+      for (const secret of ["CC_secret", "CH_secret", "CAM_secret", "HH_secret", "PER_secret", "private@example.com", "AAA-BB-CCCC", "1 Private Ln", HIDDEN]) {
+        expect(serialized).not.toContain(secret);
+      }
+    });
+
+    it("the bulk /all map is keyed by the church's campus ids, each value the same whitelisted DTO", () => {
+      const org: any = { mission: "Org mission", photos: ["https://cdn.example.org/org.jpg"], leaders: "Org leaders", id: "CC_org", churchId: "CH_secret" };
+      const overrides: any = {
+        CAM_A: { photos: ["https://cdn.example.org/a1.jpg"], phone: "555-0101", version: 3, campusId: "CAM_A" },
+        CAM_B: { leaders: HIDDEN, photos: HIDDEN },
+        CAM_OTHER: { mission: "should not appear" }
+      };
+      const all = resolveAllForChurch(org, overrides, ["CAM_A", "CAM_B", "CAM_C"]);
+      expect(Object.keys(all).sort()).toEqual(["CAM_A", "CAM_B", "CAM_C"]);
+      expect(all.CAM_A.photos).toEqual(["https://cdn.example.org/a1.jpg"]);
+      expect(all.CAM_A.phone).toBe("555-0101");
+      expect(all.CAM_A.leaders).toBe("Org leaders"); // inherited
+      expect(all.CAM_B.photos).toEqual([]); // HIDDEN list -> []
+      expect(all.CAM_B.leaders).toBe(""); // HIDDEN scalar -> ""
+      expect(all.CAM_C.mission).toBe("Org mission"); // pure org default
+      const serialized = JSON.stringify(all);
+      for (const secret of ["CC_org", "CH_secret", "should not appear", HIDDEN, "\"version\"", "\"campusId\""]) expect(serialized).not.toContain(secret);
+    });
+
+    it("an unknown church (no campuses) resolves to an empty map, not an error", () => {
+      expect(resolveAllForChurch(null, {}, [])).toEqual({});
     });
   });
 });

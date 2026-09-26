@@ -10,6 +10,9 @@ import { IcsHelper } from "../helpers/IcsHelper.js";
 import { WebhookDispatcher } from "../../../shared/webhooks/index.js";
 import { getMembershipModuleGateway } from "../../../shared/modules/index.js";
 import { NotificationService } from "../../../shared/helpers/NotificationService.js";
+import { PublicReadLimiter } from "../../../shared/helpers/PublicReadLimiter.js";
+import { buildPublicEventFeed } from "../helpers/PublicEventFeed.js";
+import { canWriteListing, changedListingKeys, validateListingFields, type ListingScope } from "../helpers/EventListingGuard.js";
 
 @controller("/content/events")
 export class EventController extends ContentBaseController {
@@ -102,6 +105,36 @@ export class EventController extends ContentBaseController {
     });
   }
 
+  // ── Anonymous PUBLIC EVENTS FEED (website redesign 2026-09) ──
+  // GET /content/events/public/:churchId[?campusId=X]
+  // Upcoming occurrences (now-1h .. +180 days) of events an admin opted in with publicListing,
+  // recurring series expanded, sorted by start, max 200, projected through the PublicEventFeed
+  // whitelist. With campusId: that center's events PLUS network-wide ones (campusId NULL).
+  // Unknown church -> [] (same shape as an empty church; no enumeration signal).
+  // Campus names/slugs come through the membership module gateway (separate database).
+  @httpGet("/public/:churchId")
+  public async getPublicFeed(@requestParam("churchId") churchId: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
+    return this.actionWrapperAnon(req, res, async () => {
+      if (!PublicReadLimiter.allow(PublicReadLimiter.clientIp(req), "eventsFeed")) return this.json({ error: "Too many requests." }, 429);
+      PublicReadLimiter.setCacheHeaders(res);
+      if (!churchId || !/^[A-Za-z0-9_-]{1,32}$/.test(churchId)) return [];
+      const campusId = req.query.campusId ? req.query.campusId.toString() : null;
+      const now = new Date();
+      const windowStart = new Date(now.getTime() - 60 * 60 * 1000);
+      const windowEnd = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
+      const rows = await this.repos.event.loadPublicListed(churchId, windowStart, windowEnd, campusId);
+      if (!rows || rows.length === 0) return [];
+      const exceptions: Record<string, Date[]> = {};
+      const recurringIds = rows.filter((r: any) => r.recurrenceRule).map((r: any) => r.id);
+      if (recurringIds.length > 0) {
+        const ex = await this.repos.eventException.loadForEvents(churchId, recurringIds);
+        (ex || []).forEach((e: any) => { (exceptions[e.eventId] ??= []).push(e.exceptionDate); });
+      }
+      const campuses = await getMembershipModuleGateway().loadPublicCampuses(churchId);
+      return buildPublicEventFeed(rows, exceptions, campuses, { now, campusId });
+    });
+  }
+
   @httpGet("/public/:churchId/:id")
   public async getPublicById(@requestParam("churchId") churchId: string, @requestParam("id") id: string, req: express.Request<{}, {}, null>, res: express.Response): Promise<any> {
     return this.actionWrapperAnon(req, res, async () => {
@@ -147,6 +180,19 @@ export class EventController extends ContentBaseController {
             if (!existing || !existing.groupId || !au.leaderGroupIds?.includes(existing.groupId)) return this.json({}, 401);
           }
         }
+      }
+      // Public-website listing fields: validate, then enforce campus scope (resolved server-side
+      // from the membership DB, never from the body) on any listing change.
+      let scope: ListingScope | null = null;
+      let campusIds: string[] | null = null;
+      for (const event of req.body) {
+        const existing = event.id ? await this.repos.event.load(au.churchId, event.id) : null;
+        if (changedListingKeys(event, existing).length === 0) continue;
+        campusIds ??= (await getMembershipModuleGateway().loadPublicCampuses(au.churchId)).map((c) => c.id);
+        const errors = validateListingFields(event, campusIds);
+        if (errors.length > 0) return this.json({ errors }, 400);
+        scope ??= await getMembershipModuleGateway().resolveCampusScope(au.churchId, au.id);
+        if (!canWriteListing(scope, event, existing)) return this.json({ errors: ["You can only publish events for your own worship center."] }, 401);
       }
       const promises: Promise<Event>[] = [];
       req.body.forEach((event) => {
@@ -261,6 +307,12 @@ export class EventController extends ContentBaseController {
     return this.actionWrapper(req, res, async (au) => {
       if (!au.checkAccess(Permissions.content.edit)) return this.json({}, 401);
       else {
+        // A publicly listed event can only be removed by someone who may manage that listing.
+        const existing = await this.repos.event.load(au.churchId, id);
+        if (existing && (existing as any).publicListing) {
+          const scope = await getMembershipModuleGateway().resolveCampusScope(au.churchId, au.id);
+          if (!canWriteListing(scope, { publicListing: false }, existing)) return this.json({ errors: ["You can only remove events for your own worship center."] }, 401);
+        }
         await this.repos.event.delete(au.churchId, id);
         await this.repos.eventBooking.deleteForEvent(au.churchId, id);
         await WebhookDispatcher.emit(au.churchId, "event.destroyed", { id, churchId: au.churchId });

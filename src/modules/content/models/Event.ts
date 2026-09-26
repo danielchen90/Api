@@ -18,4 +18,11 @@ export class Event {
   formId?: string;
   approvalStatus?: string;
   requestedBy?: string;
+  // Public website listing (2026-09 redesign). publicListing opts the event into
+  // GET /content/events/public/:churchId; campusId NULL = network-wide.
+  campusId?: string | null;
+  publicListing?: boolean;
+  location?: string | null;
+  registrationUrl?: string | null;
+  image?: string | null;
 }

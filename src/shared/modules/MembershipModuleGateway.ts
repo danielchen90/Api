@@ -45,6 +45,13 @@ export interface MembershipModuleGateway {
   loadPeopleForAutomation(churchId: string): Promise<{ id: string; displayName: string; membershipStatus?: string; gender?: string; maritalStatus?: string }[]>;
   loadList(churchId: string, listId: string): Promise<{ id: string; name: string } | null>;
   loadListMemberPersonIds(churchId: string, listId: string): Promise<string[]>;
+  // Public-safe campus list (id/name/slug only) for cross-module public DTOs (events feed).
+  loadPublicCampuses(churchId: string): Promise<{ id: string; name: string; slug: string | null }[]>;
+  // Campus scope for a user, resolved from the DATABASE (role permissions + userCampuses), never
+  // from a request or a per-api JWT bucket. Mirrors CampusScopeHelper semantics:
+  //   org-wide marker (Campus/Admin, incl. via Domain Admin expansion) -> "all";
+  //   userCampuses assignments -> "scoped"; none -> "deny".
+  resolveCampusScope(churchId: string, userId: string): Promise<{ mode: "all" } | { mode: "scoped"; campusIds: string[] } | { mode: "deny" }>;
 }
 
 class MembershipModuleGatewayDb implements MembershipModuleGateway {
@@ -260,6 +267,25 @@ class MembershipModuleGatewayDb implements MembershipModuleGateway {
       .where("listId", "=", listId)
       .execute()) as { personId: string }[];
     return rows.map((r) => r.personId).filter((id) => !!id);
+  }
+
+  public async loadPublicCampuses(churchId: string) {
+    if (!churchId) return [];
+    const repos = await this.repos();
+    const rows = ((await repos.campus.loadPublicList(churchId)) as any[]) || [];
+    return rows.map((r) => ({ id: r.id, name: r.name ?? "", slug: r.slug ?? null }));
+  }
+
+  public async resolveCampusScope(churchId: string, userId: string) {
+    if (!churchId || !userId) return { mode: "deny" as const };
+    const repos = await this.repos();
+    const { UserHelper } = await import("../../modules/membership/helpers/UserHelper.js");
+    const apis = await UserHelper.loadExpandedPermissions(userId, churchId, repos);
+    const orgWide = (apis || []).some((a: any) => (a.permissions || []).some((p: any) => p.contentType === "Campus" && p.action === "Admin"));
+    if (orgWide) return { mode: "all" as const };
+    const campusIds: string[] = await repos.userCampus.loadCampusIdsForUser(churchId, userId);
+    if (!campusIds || campusIds.length === 0) return { mode: "deny" as const };
+    return { mode: "scoped" as const, campusIds };
   }
 
   public async setPersonField(churchId: string, personId: string, field: string, value: string): Promise<void> {

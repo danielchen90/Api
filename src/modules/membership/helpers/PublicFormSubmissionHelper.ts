@@ -59,4 +59,52 @@ export class PublicFormSubmissionHelper {
     bucket.count += 1;
     return true;
   }
+
+  // ── Next Steps form types (website redesign 2026-09) ──
+  public static VALID_TYPES = ["prayer", "contact", "visit", "salvation", "baptism", "serve", "discipleship"];
+  // Types whose free-text message is required (the original prayer/contact forms). The Next Steps
+  // types are a "tap to respond" action where name + email are enough.
+  public static MESSAGE_REQUIRED_TYPES = ["prayer", "contact"];
+  public static MAX_NOTES = 1000;
+
+  /**
+   * Validate the optional "visit" extras. Returns `{ extra }` (only the provided, cleaned fields; null
+   * when none) or `{ error }`.
+   *   visitDate  ISO date (YYYY-MM-DD or a full ISO timestamp), today .. today+365 days
+   *   partySize  integer 1..20
+   *   notes      string, max 1000
+   * `now` is injectable for tests. "Today" is evaluated in UTC with one day of slack on the lower
+   * bound so a visitor west of UTC picking their local today is not rejected.
+   */
+  public static validateVisitExtra(body: any, now: Date = new Date()): { extra?: Record<string, any> | null; error?: string } {
+    const extra: Record<string, any> = {};
+
+    if (body?.visitDate !== undefined && body.visitDate !== null && body.visitDate !== "") {
+      const raw = body.visitDate.toString().trim();
+      if (!/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(raw)) return { error: "Visit date must be a date (YYYY-MM-DD)." };
+      const day = raw.slice(0, 10);
+      const d = new Date(day + "T00:00:00Z");
+      if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== day) return { error: "Visit date must be a date (YYYY-MM-DD)." };
+      const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+      const dayMs = 24 * 60 * 60 * 1000;
+      if (d.getTime() < todayUtc - dayMs) return { error: "Visit date cannot be in the past." };
+      if (d.getTime() > todayUtc + 365 * dayMs) return { error: "Visit date must be within the next year." };
+      extra.visitDate = day;
+    }
+
+    if (body?.partySize !== undefined && body.partySize !== null && body.partySize !== "") {
+      const n = Number(body.partySize);
+      if (!Number.isInteger(n) || n < 1 || n > 20) return { error: "Party size must be a whole number from 1 to 20." };
+      extra.partySize = n;
+    }
+
+    if (body?.notes !== undefined && body.notes !== null && body.notes !== "") {
+      if (typeof body.notes !== "string") return { error: "Notes must be text." };
+      const t = body.notes.trim();
+      if (t.length > PublicFormSubmissionHelper.MAX_NOTES) return { error: "Notes can be at most 1000 characters." };
+      if (t) extra.notes = t;
+    }
+
+    return { extra: Object.keys(extra).length > 0 ? extra : null };
+  }
 }

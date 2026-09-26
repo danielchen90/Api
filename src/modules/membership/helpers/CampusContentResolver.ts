@@ -18,7 +18,7 @@
 // HIDDEN sentinel below: `campusOverride.field === HIDDEN` → resolved field is the
 // field's blank value (empty string for scalars, empty array for lists).
 //
-// LIST FIELDS (serviceTimes, extraLinks) override by WHOLE-LIST REPLACEMENT — if
+// LIST FIELDS (serviceTimes, extraLinks, photos) override by WHOLE-LIST REPLACEMENT — if
 // the campus override provides the array, the resolved list IS that array entirely
 // (no per-entry merge). Absent → inherit the org default list; HIDDEN → [].
 
@@ -62,10 +62,19 @@ export interface CampusContentFields {
   sermonYoutubeChannel?: string | typeof HIDDEN;
   // Open list of extra labelled links (whole-list-replaced).
   extraLinks?: ExtraLink[] | typeof HIDDEN;
+  // Worship-center photo gallery: FilesManager/file-store URLs in display order
+  // (whole-list-replaced, max 12). The first photo leads the locations page.
+  photos?: string[] | typeof HIDDEN;
+  // Public contact block for the center (intentionally public, like a campus address).
+  leaders?: string | typeof HIDDEN;
+  phone?: string | typeof HIDDEN;
+  email?: string | typeof HIDDEN;
+  // "Your first visit" copy: plain text with line breaks.
+  whatToExpect?: string | typeof HIDDEN;
 }
 
 // Blank value for a hidden field: [] for list fields, "" for everything else.
-const LIST_FIELDS: ReadonlyArray<keyof CampusContentFields> = ["serviceTimes", "extraLinks"];
+const LIST_FIELDS: ReadonlyArray<keyof CampusContentFields> = ["serviceTimes", "extraLinks", "photos"];
 const blankFor = (field: keyof CampusContentFields): any => (LIST_FIELDS.includes(field) ? [] : "");
 
 // Resolve one campus's rendered content from the org default + that campus's

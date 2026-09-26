@@ -21,6 +21,8 @@ export class FormSubmission {
   public submitterEmail?: string;
   public submitterPhone?: string;
   public message?: string;
+  // Type-specific extras (JSON in the `extra` column). "visit": { visitDate, partySize, notes }.
+  public extra?: Record<string, any> | null;
 
   public form?: Form;
   public questions?: Question[];

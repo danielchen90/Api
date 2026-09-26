@@ -35,7 +35,12 @@ export class EventRepo {
       tags: m.tags,
       formId: m.formId,
       approvalStatus: m.approvalStatus,
-      requestedBy: m.requestedBy
+      requestedBy: m.requestedBy,
+      campusId: m.campusId,
+      publicListing: m.publicListing === undefined ? undefined : (m.publicListing ? 1 : 0),
+      location: m.location,
+      registrationUrl: m.registrationUrl,
+      image: m.image
     } as any).execute();
     return model;
   }
@@ -62,7 +67,12 @@ export class EventRepo {
       tags: m.tags,
       formId: m.formId,
       approvalStatus: m.approvalStatus,
-      requestedBy: m.requestedBy
+      requestedBy: m.requestedBy,
+      campusId: m.campusId,
+      publicListing: m.publicListing === undefined ? undefined : (m.publicListing ? 1 : 0),
+      location: m.location,
+      registrationUrl: m.registrationUrl,
+      image: m.image
     } as any).where("id", "=", model.id).where("churchId", "=", model.churchId).execute();
     return model;
   }
@@ -158,6 +168,22 @@ export class EventRepo {
     return result.rows;
   }
 
+  // Public website feed: publicListing events that can have an occurrence in [windowStart, windowEnd].
+  // Recurring rows are returned whenever their series starts before the window end (the caller
+  // expands them); one-off rows must overlap the window. Private / pending / rejected rows are
+  // excluded here AND again by PublicEventFeed (defense in depth).
+  public async loadPublicListed(churchId: string, windowStart: Date, windowEnd: Date, campusId?: string | null): Promise<Event[]> {
+    let q = getDb().selectFrom("events").selectAll()
+      .where("churchId", "=", churchId)
+      .where("publicListing", "=", 1 as any)
+      .where((eb) => eb.or([eb("visibility", "is", null), eb("visibility", "!=", "private")]))
+      .where((eb) => eb.or([eb("approvalStatus", "is", null), eb("approvalStatus", "not in", ["pending", "rejected"])]))
+      .where("start", "<=", DateHelper.toMysqlDate(windowEnd) as any)
+      .where((eb) => eb.or([eb("end", ">=", DateHelper.toMysqlDate(windowStart) as any), eb("recurrenceRule", "is not", null)]));
+    if (campusId) q = q.where((eb) => eb.or([eb("campusId", "=", campusId), eb("campusId", "is", null)]));
+    return (await q.orderBy("start").limit(1000).execute()) as any;
+  }
+
   public convertToModel(_churchId: string, data: any) { return data as Event; }
   public convertAllToModel(_churchId: string, data: any[]) { return (data || []) as Event[]; }
 
@@ -180,7 +206,12 @@ export class EventRepo {
       tags: row.tags,
       formId: row.formId,
       approvalStatus: row.approvalStatus,
-      requestedBy: row.requestedBy
+      requestedBy: row.requestedBy,
+      campusId: row.campusId ?? null,
+      publicListing: !!row.publicListing,
+      location: row.location ?? null,
+      registrationUrl: row.registrationUrl ?? null,
+      image: row.image ?? null
     };
   }
 }
