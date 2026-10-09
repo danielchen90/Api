@@ -53,3 +53,4 @@ export { AccessLogController } from "./AccessLogController.js";
 export { MeController } from "./MeController.js";
 export { CrmController } from "./CrmController.js";
 export { CrmEventController } from "./CrmEventController.js";
+export { MbidController } from "./MbidController.js";

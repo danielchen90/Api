@@ -127,6 +127,16 @@ The API provides endpoints for all modules under a unified structure:
 
 Module-specific endpoints will be documented during migration.
 
+### Mary Banks ID account deletion
+
+`POST /membership/mbid/account-deleted` (Railway: `https://api-production-58a7.up.railway.app/membership/mbid/account-deleted`)
+is called by the Partners relay after someone deletes their Mary Banks ID. Body `{ "sub": "<keycloak user id>" }`,
+headers `x-mbid-timestamp` (unix seconds, within 300 s) and `x-mbid-signature` (hex HMAC-SHA256 of
+`${timestamp}.${sub}` with `MBID_DELETION_SECRET`). Set `MBID_DELETION_SECRET` on the Api service (same value on
+every site); without it the endpoint answers 503. It deletes the login user, CRM data and personal rows and
+anonymizes the church record (giving and attendance keep their personId); see
+`src/modules/membership/helpers/mbid/MbidAccountErasure.ts` for the full list.
+
 ## Environment Configuration
 
 ### Local Development (.env)

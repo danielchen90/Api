@@ -3,6 +3,7 @@ import { Repos } from "../../repositories/Repos.js";
 import { ActivityInput } from "../../repositories/CrmRepo.js";
 import { CrmConfig } from "./CrmConfig.js";
 import { CrmPeople, normEmail } from "./CrmPeople.js";
+import { MbidAccountErasure } from "../mbid/MbidAccountErasure.js";
 
 /**
  * Pulls what each person did on the other Mary Banks sites into crmActivities, read-only, straight
@@ -218,6 +219,8 @@ export class CrmActivitySync {
     const index = await this.repos.crm.loadPeopleIndex(churchId);
     const bySub = new Map<string, string>();
     const byEmail = new Map<string, string>();
+    // People who deleted their Mary Banks ID: their history on other sites never comes back here.
+    const erased = await MbidAccountErasure.loadTombstones();
     for (const p of index) {
       if (isRemoved(p.removed)) continue;
       if (p.mbidSub) bySub.set(p.mbidSub, p.id);
@@ -239,6 +242,7 @@ export class CrmActivitySync {
         stat.rows = rows.length;
         const perPerson = new Map<string, ActivityInput[]>();
         for (const r of rows) {
+          if (MbidAccountErasure.isErased(erased, { sub: r.sub, email: r.email, occurredAt: r.activity.occurredAt })) continue;
           let personId = (r.sub && bySub.get(r.sub)) || (r.email && byEmail.get(normEmail(r.email))) || null;
           if (!personId && r.createIfMissing && normEmail(r.email)) {
             const [first, ...rest] = String(r.name || "").trim().split(/\s+/);

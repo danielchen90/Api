@@ -3,6 +3,7 @@ import { getDb } from "../../db/index.js";
 import { CrmConfig } from "./CrmConfig.js";
 import { CrmPeople, normEmail } from "./CrmPeople.js";
 import { CrmSyncService, countryName } from "./CrmSyncService.js";
+import { MbidAccountErasure } from "../mbid/MbidAccountErasure.js";
 
 /**
  * Joining the Global Church (the "right hand of fellowship" online). The Global Church site calls
@@ -31,6 +32,8 @@ export class CrmMembership {
     if (!churchId) throw Object.assign(new Error("no_church"), { status: 503 });
     const email = normEmail(input.email);
     if (!input.sub || !email) throw Object.assign(new Error("bad_request"), { status: 400 });
+    // A deleted Mary Banks ID (a stale session on the calling site) never gets a new record.
+    if (MbidAccountErasure.isErased(await MbidAccountErasure.loadTombstones(), { sub: input.sub })) throw Object.assign(new Error("account_deleted"), { status: 410 });
 
     // The person for this Mary Banks ID (synced from Keycloak first so verified extra emails match).
     let personId = await new CrmSyncService(repos).syncOne(input.sub).catch(() => null);
