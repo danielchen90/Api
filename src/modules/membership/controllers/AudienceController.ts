@@ -48,7 +48,11 @@ export class AudienceController extends MembershipBaseController {
       const personIds = await resolveDescriptorPersonIds(au.churchId, descriptor, this.repos);
 
       // 5. Load people SCOPED — out-of-scope is structurally impossible (applyCampusScope in loadForAudience).
-      const people = (await this.repos.person.loadForAudience(au.churchId, scope, { campusTargetId, personIds })) as any[];
+      // CRM contacts (membershipStatus "Contact": Mary Banks ID accounts and people met elsewhere) are
+      // reached only when picked by name (type "people", which the CRM's audiences use); every
+      // church/campus/group/auxiliary audience leaves them out.
+      const includeContacts = descriptor.type === "people";
+      const people = (await this.repos.person.loadForAudience(au.churchId, scope, { campusTargetId, personIds, includeContacts })) as any[];
 
       // 6. Enrich mergeData with the ACTIVE ordination credential (BLD-03 third merge-field category),
       //    frozen into the snapshot at RESOLVE time (not render time) so a later revoke/re-grant never

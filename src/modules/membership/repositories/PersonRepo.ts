@@ -181,11 +181,12 @@ export class PersonRepo {
   public async loadForAudience(
     churchId: string,
     scope: CampusScope,
-    opts: { campusTargetId?: string; personIds?: string[] | null }
+    opts: { campusTargetId?: string; personIds?: string[] | null; includeContacts?: boolean }
   ) {
     let q = getDb().selectFrom("people").selectAll()
       .where("churchId", "=", churchId)
       .where("removed", "=", false as any);
+    if (!opts.includeContacts) q = q.where((eb) => eb.or([eb("membershipStatus", "is", null), eb("membershipStatus", "!=", "Contact")]));
     q = applyCampusScope(q, scope);                       // ADDITIVE campus filter (all/IN(set)/1=0) — the safety line
     if (opts.campusTargetId) q = q.where("campusId", "=", opts.campusTargetId); // narrow WITHIN scope (Pitfall 7)
     if (opts.personIds) {                                  // group/auxiliary/filter narrowing
@@ -383,7 +384,7 @@ export class PersonRepo {
   // are legitimately NULL and cannot be backfilled). Returns [{ week: Date, count: number }]
   // ascending, limited to the last `weeks` weeks.
   public async loadNewMembersTrend(churchId: string, weeks = 52) {
-    const rows = await sql<any>`SELECT STR_TO_DATE(concat(year(p.dateAdded), ' ', week(p.dateAdded, 0), ' Sunday'), '%X %V %W') AS week, count(distinct(p.id)) as count FROM people p WHERE p.churchId=${churchId} AND p.removed=0 AND p.dateAdded IS NOT NULL AND p.dateAdded >= DATE_SUB(CURDATE(), INTERVAL ${weeks} WEEK) GROUP BY year(p.dateAdded), week(p.dateAdded, 0), STR_TO_DATE(concat(year(p.dateAdded), ' ', week(p.dateAdded, 0), ' Sunday'), '%X %V %W') ORDER BY year(p.dateAdded), week(p.dateAdded, 0)`.execute(getDb());
+    const rows = await sql<any>`SELECT STR_TO_DATE(concat(year(p.dateAdded), ' ', week(p.dateAdded, 0), ' Sunday'), '%X %V %W') AS week, count(distinct(p.id)) as count FROM people p WHERE p.churchId=${churchId} AND p.removed=0 AND (p.membershipStatus IS NULL OR p.membershipStatus <> 'Contact') AND p.dateAdded IS NOT NULL AND p.dateAdded >= DATE_SUB(CURDATE(), INTERVAL ${weeks} WEEK) GROUP BY year(p.dateAdded), week(p.dateAdded, 0), STR_TO_DATE(concat(year(p.dateAdded), ' ', week(p.dateAdded, 0), ' Sunday'), '%X %V %W') ORDER BY year(p.dateAdded), week(p.dateAdded, 0)`.execute(getDb());
     return rows.rows;
   }
 

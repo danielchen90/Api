@@ -51,3 +51,4 @@ export { LeadershipReportController } from "./LeadershipReportController.js";
 export { AudienceController } from "./AudienceController.js";
 export { AccessLogController } from "./AccessLogController.js";
 export { MeController } from "./MeController.js";
+export { CrmController } from "./CrmController.js";

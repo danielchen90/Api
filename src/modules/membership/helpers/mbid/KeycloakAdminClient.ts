@@ -98,6 +98,15 @@ export class KeycloakAdminClient implements MbidAdminPort {
     return (await this.call("GET", "/users/" + encodeURIComponent(sub) + "?userProfileMetadata=false")) as KeycloakUser | null;
   }
 
+  /** One page of realm users with attributes and createdTimestamp (the CRM sync walks every page). */
+  public async listUsers(first: number, max: number): Promise<KeycloakUser[]> {
+    return ((await this.call("GET", "/users?briefRepresentation=false&first=" + first + "&max=" + max)) || []) as KeycloakUser[];
+  }
+
+  public async countUsers(): Promise<number> {
+    return Number(await this.call("GET", "/users/count")) || 0;
+  }
+
   /** Ids of OTHER accounts whose primary email or verifiedEmails equal `email` (exact, case-insensitive). */
   public async findOtherAccountsWithEmail(email: string, excludeSub: string): Promise<string[]> {
     const target = normalizeEmail(email);

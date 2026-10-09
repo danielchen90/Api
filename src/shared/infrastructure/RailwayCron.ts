@@ -70,6 +70,28 @@ const runScheduledSends = async (): Promise<void> => {
   await ScheduledSendWorker.process(repos);
 };
 
+// Ministry-wide CRM (2026-10): every Mary Banks ID gets a church person (every 5 min), and what
+// people do on the other sites is pulled into their timeline (every 30 min). A run still going
+// when the next tick fires is skipped, never doubled. CRM_SYNC=off stops both.
+const crmBusy: Record<string, boolean> = {};
+const runCrm = async (job: "keycloak" | "activity"): Promise<void> => {
+  if (crmBusy[job]) return;
+  crmBusy[job] = true;
+  try {
+    const repos = await RepoManager.getRepos<any>("membership");
+    if (job === "keycloak") {
+      const { CrmSyncService } = await import("../../modules/membership/helpers/crm/CrmSyncService.js");
+      const r = await new CrmSyncService(repos).run();
+      if (r.created || r.linked || r.removed) console.warn("[crm] keycloak sync", JSON.stringify(r));
+    } else {
+      const { CrmActivitySync } = await import("../../modules/membership/helpers/crm/CrmActivitySync.js");
+      console.warn("[crm] activity sync", JSON.stringify(await new CrmActivitySync(repos).run()));
+    }
+  } finally {
+    crmBusy[job] = false;
+  }
+};
+
 export const startRailwayCron = (): void => {
   if (!process.env.RAILWAY_ENVIRONMENT) return;
 
@@ -88,4 +110,12 @@ export const startRailwayCron = (): void => {
   };
 
   scheduleDaily("midnight timer", runMidnight);
+
+  if ((process.env.CRM_SYNC || "on").toLowerCase() !== "off") {
+    const FIVE_MINUTES_MS = 5 * 60 * 1000;
+    setTimeout(() => void safe("crm keycloak sync", () => runCrm("keycloak")), 60 * 1000);
+    setInterval(() => void safe("crm keycloak sync", () => runCrm("keycloak")), FIVE_MINUTES_MS);
+    setTimeout(() => void safe("crm activity sync", () => runCrm("activity")), 3 * 60 * 1000);
+    setInterval(() => void safe("crm activity sync", () => runCrm("activity")), THIRTY_MINUTES_MS);
+  }
 };
