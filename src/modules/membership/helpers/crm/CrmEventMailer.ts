@@ -104,7 +104,8 @@ export class CrmEventMailer {
     const settings = await messaging.churchEmailSettings.loadByChurch(churchId).catch(() => null);
     const clean = (s: string) => String(s || "").replace(/[\r\n]/g, " ").trim();
     const fromEmail = settings?.fromEmail || process.env.CRM_FROM_EMAIL || Environment.supportEmail || "noreply@huro.church";
-    const fromName = clean(settings?.fromName || "Bible Teachers International");
+    // The ministry's name, not the campaign sender's personal name (CRM_FROM_NAME overrides).
+    const fromName = clean(process.env.CRM_FROM_NAME || "Bible Teachers International");
     return { from: `${fromName} <${fromEmail}>`, replyTo: settings?.replyTo ? clean(settings.replyTo) : undefined, messaging };
   }
 
