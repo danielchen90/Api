@@ -54,7 +54,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     updatedAt DATETIME NOT NULL,
     KEY idx_crmProfiles_church (churchId),
     KEY idx_crmProfiles_country (churchId, countryCode)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmNotes (
     id CHAR(11) NOT NULL PRIMARY KEY,
@@ -68,7 +68,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     addedByName VARCHAR(100) NULL,
     createdAt DATETIME NOT NULL,
     KEY idx_crmNotes_person (churchId, personId, createdAt)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmFacts (
     id CHAR(11) NOT NULL PRIMARY KEY,
@@ -81,7 +81,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     createdAt DATETIME NOT NULL,
     resolvedAt DATETIME NULL,
     KEY idx_crmFacts_person (churchId, personId, kind)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmTags (
     id CHAR(11) NOT NULL PRIMARY KEY,
@@ -89,7 +89,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     name VARCHAR(60) NOT NULL,
     color VARCHAR(20) NULL,
     UNIQUE KEY uq_crmTags_name (churchId, name)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmPersonTags (
     churchId CHAR(11) NOT NULL,
@@ -98,7 +98,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     createdAt DATETIME NOT NULL,
     PRIMARY KEY (churchId, personId, tagId),
     KEY idx_crmPersonTags_tag (churchId, tagId)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmActivities (
     id CHAR(11) NOT NULL PRIMARY KEY,
@@ -113,20 +113,20 @@ export async function up(db: Kysely<any>): Promise<void> {
     occurredAt DATETIME NOT NULL,
     UNIQUE KEY uq_crmActivities (personId, site, type, refKey),
     KEY idx_crmActivities_person (churchId, personId, occurredAt)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmSyncState (
     name VARCHAR(64) NOT NULL PRIMARY KEY,
     value TEXT NULL,
     updatedAt DATETIME NOT NULL
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmBotChecks (
     sub VARCHAR(64) NOT NULL PRIMARY KEY,
     bot TINYINT(1) NOT NULL,
     how VARCHAR(20) NOT NULL,
     checkedAt DATETIME NOT NULL
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 }
 
 export async function down(db: Kysely<any>): Promise<void> {

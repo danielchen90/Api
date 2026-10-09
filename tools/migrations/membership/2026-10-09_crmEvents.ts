@@ -45,7 +45,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     updatedAt DATETIME NOT NULL,
     UNIQUE KEY uq_crmEvents_slug (churchId, slug),
     KEY idx_crmEvents_start (churchId, startsAt)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmEventRegistrations (
     id CHAR(11) NOT NULL PRIMARY KEY,
@@ -70,7 +70,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     createdAt DATETIME NOT NULL,
     UNIQUE KEY uq_crmEventRegistrations (eventId, email),
     KEY idx_crmEventRegistrations_person (churchId, personId)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmEventEmails (
     id CHAR(11) NOT NULL PRIMARY KEY,
@@ -88,7 +88,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     createdAt DATETIME NOT NULL,
     updatedAt DATETIME NOT NULL,
     KEY idx_crmEventEmails_event (churchId, eventId)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 
   await sql`CREATE TABLE IF NOT EXISTS crmEventEmailSends (
     emailId CHAR(11) NOT NULL,
@@ -98,7 +98,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     error VARCHAR(300) NULL,
     sentAt DATETIME NOT NULL,
     PRIMARY KEY (emailId, recipientKey)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`.execute(db);
+  ) ENGINE=InnoDB`.execute(db);
 }
 
 export async function down(db: Kysely<any>): Promise<void> {
