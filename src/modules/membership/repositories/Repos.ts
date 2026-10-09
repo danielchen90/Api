@@ -34,7 +34,8 @@ import {
   LicenseCardRepo,
   PrintBatchRepo,
   MemberAccountRepo,
-  CrmRepo
+  CrmRepo,
+  CrmEventRepo
 } from "./index.js";
 import { UserRepo, ChurchRepo, RoleRepo, RoleMemberRepo, RolePermissionRepo, UserChurchRepo, AccessLogRepo, AuditLogRepo, CampusRepo, CampusContentRepo, AuxiliaryRepo } from "./index.js";
 
@@ -92,6 +93,7 @@ export class Repos {
   public printBatch: PrintBatchRepo;
   public memberAccount: MemberAccountRepo;
   public crm: CrmRepo;
+  public crmEvent: CrmEventRepo;
 
   public static getCurrent = () => new Repos();
 
@@ -149,5 +151,6 @@ export class Repos {
     this.printBatch = new PrintBatchRepo();
     this.memberAccount = new MemberAccountRepo();
     this.crm = new CrmRepo();
+    this.crmEvent = new CrmEventRepo();
   }
 }

@@ -39,14 +39,19 @@ const SOURCES: Source[] = [
       const enr = await db.query(
         `SELECT e.id, e.progress, e.completed, e."completionDate", e."enrollmentDate", e."lastAccessedAt", e."updatedAt", c.id AS "courseId", c.title, u."keycloakSub", u.email
            FROM enrollments e JOIN course_offerings o ON o.id = e."courseOfferingId" JOIN courses c ON c.id = o."courseId" JOIN users u ON u.id = e."userId"
-          WHERE e."updatedAt" >= $1`, [since]);
+          WHERE e."updatedAt" >= $1`, [since]
+      );
       for (const r of enr.rows) {
         const done = !!r.completed;
         out.push({
-          sub: r.keycloakSub, email: r.email,
+          sub: r.keycloakSub,
+          email: r.email,
           activity: {
-            site: "gtc", type: done ? "course_completed" : "course", refKey: "enrollment:" + r.id,
-            title: r.title, detail: done ? "Completed" : `${pct(r.progress)}% through`,
+            site: "gtc",
+            type: done ? "course_completed" : "course",
+            refKey: "enrollment:" + r.id,
+            title: r.title,
+            detail: done ? "Completed" : `${pct(r.progress)}% through`,
             occurredAt: new Date(r.completionDate || r.lastAccessedAt || r.enrollmentDate || r.updatedAt)
           }
         });
@@ -54,7 +59,8 @@ const SOURCES: Source[] = [
       const certs = await db.query(
         `SELECT ce.id, ce.title, ce."issuedDate", ce."updatedAt", c.title AS course, u."keycloakSub", u.email
            FROM certificates ce JOIN users u ON u.id = ce."userId" LEFT JOIN courses c ON c.id = ce."courseId"
-          WHERE ce."updatedAt" >= $1 AND ce."revokedDate" IS NULL`, [since]);
+          WHERE ce."updatedAt" >= $1 AND ce."revokedDate" IS NULL`, [since]
+      );
       for (const r of certs.rows) {
         out.push({ sub: r.keycloakSub, email: r.email, activity: { site: "gtc", type: "certificate", refKey: "cert:" + r.id, title: r.course || r.title, detail: r.title, occurredAt: new Date(r.issuedDate || r.updatedAt) } });
       }
@@ -68,15 +74,19 @@ const SOURCES: Source[] = [
       const out: Row[] = [];
       const books = await db.query(
         `SELECT id, user_email, product_id, product_slug, product_title, page, pages, max_page, opened_at, finished_at, updated_at
-           FROM book_progress WHERE updated_at >= $1`, [since]);
+           FROM book_progress WHERE updated_at >= $1`, [since]
+      );
       for (const r of books.rows) {
         const done = !!r.finished_at;
         const of = r.pages ? ` of ${r.pages}` : "";
         out.push({
           email: r.user_email,
           activity: {
-            site: "library", type: done ? "book_finished" : "book", refKey: "book:" + r.product_id,
-            title: r.product_title || r.product_slug || "A book", detail: done ? "Finished" : `Read to page ${r.max_page || r.page}${of}`,
+            site: "library",
+            type: done ? "book_finished" : "book",
+            refKey: "book:" + r.product_id,
+            title: r.product_title || r.product_slug || "A book",
+            detail: done ? "Finished" : `Read to page ${r.max_page || r.page}${of}`,
             url: r.product_slug ? `${LIBRARY}/products/${r.product_slug}` : null,
             occurredAt: new Date(r.finished_at || r.opened_at || r.updated_at)
           }
@@ -85,7 +95,8 @@ const SOURCES: Source[] = [
       const audio = await db.query(
         `SELECT s.id, s.user_email, s.product_id, s.progress_ms, s.played_at, s.finished_at, s.saved_at, s.updated_at, a.title
            FROM audiobook_shelf s LEFT JOIN LATERAL (SELECT li.title FROM audiobooks ab JOIN library_items li ON li.id = ab.library_item_id WHERE ab.vendure_product_id = s.product_id LIMIT 1) a ON true
-          WHERE s.updated_at >= $1`, [since]).catch(() =>
+          WHERE s.updated_at >= $1`, [since]
+      ).catch(() =>
         db.query(`SELECT id, user_email, product_id, progress_ms, played_at, finished_at, saved_at, updated_at, NULL AS title FROM audiobook_shelf WHERE updated_at >= $1`, [since]));
       for (const r of audio.rows) {
         if (!r.played_at && !r.saved_at) continue;
@@ -93,8 +104,11 @@ const SOURCES: Source[] = [
         out.push({
           email: r.user_email,
           activity: {
-            site: "library", type: done ? "audiobook_finished" : r.played_at ? "audiobook" : "audiobook_saved", refKey: "audio:" + r.product_id,
-            title: r.title || "An audiobook", detail: done ? "Finished listening" : r.played_at ? `Listened ${Math.round((r.progress_ms || 0) / 60000)} min` : "Saved to listen",
+            site: "library",
+            type: done ? "audiobook_finished" : r.played_at ? "audiobook" : "audiobook_saved",
+            refKey: "audio:" + r.product_id,
+            title: r.title || "An audiobook",
+            detail: done ? "Finished listening" : r.played_at ? `Listened ${Math.round((r.progress_ms || 0) / 60000)} min` : "Saved to listen",
             occurredAt: new Date(r.finished_at || r.played_at || r.saved_at || r.updated_at)
           }
         });
@@ -110,7 +124,10 @@ const SOURCES: Source[] = [
       const prayers = await db.query(`SELECT id, created_at, name, email, text, text_en, private, status, subject FROM prayer_requests WHERE created_at >= $1`, [since]);
       for (const r of prayers.rows) {
         out.push({
-          sub: r.subject, email: r.email, name: r.name, createIfMissing: true,
+          sub: r.subject,
+          email: r.email,
+          name: r.name,
+          createIfMissing: true,
           activity: { site: "church", type: "prayer_request", refKey: "prayer:" + r.id, title: "Prayer request", detail: String(r.text_en || r.text || "").slice(0, 500), occurredAt: new Date(r.created_at) }
         });
       }
@@ -118,12 +135,16 @@ const SOURCES: Source[] = [
       const KIND: Record<string, string> = { salvation: "Gave their life to Christ", baptism: "Asked about baptism", membership: "Asked about membership", serve: "Wants to serve", group: "Wants to join a group", contact: "Asked to be contacted" };
       for (const r of steps.rows) {
         out.push({
-          sub: r.subject, email: r.email, name: r.name, createIfMissing: true,
+          sub: r.subject,
+          email: r.email,
+          name: r.name,
+          createIfMissing: true,
           activity: { site: "church", type: "next_step", refKey: "step:" + r.id, title: KIND[r.kind] || "Next step: " + r.kind, detail: String(r.message_en || r.message || "").slice(0, 500) || null, occurredAt: new Date(r.created_at) }
         });
       }
       const groups = await db.query(
-        `SELECT m.group_id, m.subject, m.name, m.email, m.role, m.joined_at, g.name AS group_name, g.slug FROM group_members m JOIN groups g ON g.id = m.group_id WHERE m.joined_at >= $1`, [since]);
+        `SELECT m.group_id, m.subject, m.name, m.email, m.role, m.joined_at, g.name AS group_name, g.slug FROM group_members m JOIN groups g ON g.id = m.group_id WHERE m.joined_at >= $1`, [since]
+      );
       for (const r of groups.rows) {
         out.push({ sub: r.subject, email: r.email, activity: { site: "church", type: "group", refKey: "group:" + r.group_id, title: r.group_name, detail: r.role === "leader" ? "Leads this E-Group" : "Joined this E-Group", occurredAt: new Date(r.joined_at) } });
       }
@@ -137,7 +158,8 @@ const SOURCES: Source[] = [
       const out: Row[] = [];
       const watched = await db.query(
         `SELECT w.user_sub, w.video_id, w.position_s, COALESCE(w.duration_s, v.duration_s) AS duration_s, w.updated_at, v.title
-           FROM watch_progress w JOIN videos v ON v.id = w.video_id WHERE w.updated_at >= $1`, [since]);
+           FROM watch_progress w JOIN videos v ON v.id = w.video_id WHERE w.updated_at >= $1`, [since]
+      );
       for (const r of watched.rows) {
         const share = r.duration_s ? pct((100 * r.position_s) / r.duration_s) : null;
         out.push({ sub: r.user_sub, activity: { site: "theater", type: "watched", refKey: "video:" + r.video_id, title: r.title, detail: share === null ? null : share >= 95 ? "Watched to the end" : `Watched ${share}%`, url: `${THEATER}/watch/${r.video_id}`, occurredAt: new Date(r.updated_at) } });
@@ -155,7 +177,8 @@ const SOURCES: Source[] = [
         `SELECT c.id, c.title, c.site, c."createdAt", c."updatedAt", p."keycloakSub"
            FROM ask_mary_conversations c JOIN ask_mary_profiles p ON p.id = c."profileId"
           WHERE c."updatedAt" >= $1 AND p."keycloakSub" IS NOT NULL AND c.title IS NOT NULL AND c.title <> ''
-            AND (p.consent->>'personalization') = 'true'`, [since]);
+            AND (p.consent->>'personalization') = 'true'`, [since]
+      );
       return res.rows.map((r: any) => ({ sub: r.keycloakSub, activity: { site: "askmary", type: "topic", refKey: "conv:" + r.id, title: String(r.title).slice(0, 300), detail: "Asked Mary on " + r.site, occurredAt: new Date(r.createdAt) } }));
     }
   }

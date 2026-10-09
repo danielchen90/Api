@@ -27,7 +27,9 @@ export class CrmService {
 
   async profileView(churchId: string, personId: string) {
     const person: any = await (getDb() as any).selectFrom("people")
-      .select(["id", "displayName", "firstName", "lastName", "email", "mobilePhone", "homePhone", "membershipStatus", "campusId", "mbidSub", "source", "dateAdded", "removed"])
+      .select([
+        "id", "displayName", "firstName", "lastName", "email", "mobilePhone", "homePhone", "membershipStatus", "campusId", "mbidSub", "source", "dateAdded", "removed"
+      ])
       .where("churchId", "=", churchId).where("id", "=", personId).executeTakeFirst();
     if (!person) return null;
     const [profile, tags, facts, notes, activities] = await Promise.all([
@@ -106,9 +108,7 @@ export class CrmService {
     let created = false;
     if (!personId) {
       if (!ex?.person?.firstName && !ex?.person?.emails?.length && !ex?.person?.phones?.length) throw Object.assign(new Error("no_identity"), { status: 400 });
-      const made = await CrmPeople.ensure(this.repos, {
-        churchId, emails: ex.person.emails, firstName: ex.person.firstName, lastName: ex.person.lastName, phone: ex.person.phones[0] || null, source: "capture"
-      });
+      const made = await CrmPeople.ensure(this.repos, { churchId, emails: ex.person.emails, firstName: ex.person.firstName, lastName: ex.person.lastName, phone: ex.person.phones[0] || null, source: "capture" });
       personId = made.personId;
       created = made.created;
     }
@@ -139,12 +139,10 @@ export class CrmService {
     const fill = (key: string, val: string | null, label: string) => {
       if (!val) return;
       const cur = (prof as any)?.[key];
-      if (!cur) { patch[key] = val; changes.push(label); }
-      else if (String(cur).toLowerCase() !== val.toLowerCase()) extraFacts.push(`${label[0].toUpperCase() + label.slice(1)} given as ${val} (record says ${cur})`);
+      if (!cur) { patch[key] = val; changes.push(label); } else if (String(cur).toLowerCase() !== val.toLowerCase()) extraFacts.push(`${label[0].toUpperCase() + label.slice(1)} given as ${val} (record says ${cur})`);
     };
     if (ex.person.countryCode) {
-      if (!prof?.countryCode) { patch.countryCode = ex.person.countryCode; patch.country = countryName(ex.person.countryCode); changes.push("country"); }
-      else if (prof.countryCode !== ex.person.countryCode) extraFacts.push(`Country given as ${countryName(ex.person.countryCode)} (record says ${prof.country || prof.countryCode})`);
+      if (!prof?.countryCode) { patch.countryCode = ex.person.countryCode; patch.country = countryName(ex.person.countryCode); changes.push("country"); } else if (prof.countryCode !== ex.person.countryCode) extraFacts.push(`Country given as ${countryName(ex.person.countryCode)} (record says ${prof.country || prof.countryCode})`);
     }
     fill("city", clip(ex.person.city, 80), "city");
     fill("region", clip(ex.person.region, 80), "region");
@@ -169,7 +167,11 @@ export class CrmService {
     const transcript = input.imageCount && ex.transcript ? "Screenshot transcript:\n" + ex.transcript.trim() : null;
     const body = [input.text?.trim(), transcript].filter(Boolean).join("\n\n") || ex.noteSummary;
     const noteId = await this.repos.crm.addNote(churchId, personId!, {
-      kind: "capture", body, extracted: { summary: ex.noteSummary, changes }, addedBy: actor.userId, addedByName: actor.name,
+      kind: "capture",
+      body,
+      extracted: { summary: ex.noteSummary, changes },
+      addedBy: actor.userId,
+      addedByName: actor.name,
       images: input.imageCount ? Array.from({ length: Math.min(input.imageCount, 6) }, (_, i) => "screenshot-" + (i + 1)) : []
     });
     for (const f of ex.facts) await this.repos.crm.addFact(churchId, personId!, f.kind, f.text, noteId);

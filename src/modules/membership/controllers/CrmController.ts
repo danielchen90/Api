@@ -71,8 +71,14 @@ export class CrmController extends MembershipBaseController {
     return this.run(req, res, { orgWide: true }, async (au) => {
       const q = req.query as any;
       return this.repos.crm.search(au.churchId, {
-        q: q.q, status: q.status, source: q.source, countryCode: q.countryCode, tagId: q.tagId, consent: q.consent,
-        limit: Number(q.limit) || 50, offset: Number(q.offset) || 0
+        q: q.q,
+        status: q.status,
+        source: q.source,
+        countryCode: q.countryCode,
+        tagId: q.tagId,
+        consent: q.consent,
+        limit: Number(q.limit) || 50,
+        offset: Number(q.offset) || 0
       });
     });
   }

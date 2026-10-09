@@ -32,7 +32,9 @@ export interface CrmProfileRow {
   updatedAt: Date;
 }
 
-export const PROFILE_FIELDS = ["country", "countryCode", "region", "city", "timezone", "languages", "ministryRole", "organization"] as const;
+export const PROFILE_FIELDS = [
+  "country", "countryCode", "region", "city", "timezone", "languages", "ministryRole", "organization"
+] as const;
 
 export interface ActivityInput {
   site: string;
@@ -95,7 +97,9 @@ export class CrmRepo {
   public async addNote(churchId: string, personId: string, note: { kind: string; body: string | null; images?: string[]; extracted?: any; addedBy?: string | null; addedByName?: string | null }): Promise<string> {
     const id = UniqueIdHelper.shortId();
     await db().insertInto("crmNotes").values({
-      id, churchId, personId,
+      id,
+      churchId,
+      personId,
       kind: note.kind,
       body: note.body,
       images: note.images?.length ? JSON.stringify(note.images) : null,
@@ -223,17 +227,42 @@ export class CrmRepo {
     if (f.q && f.q.trim()) {
       const like = "%" + f.q.trim().replace(/[%_]/g, "") + "%";
       q = q.where((eb: any) => eb.or([
-        eb("p.displayName", "like", like), eb("p.email", "like", like), eb("p.mobilePhone", "like", like),
-        eb("c.country", "like", like), eb("c.city", "like", like), eb("c.organization", "like", like), eb("c.ministryRole", "like", like)
+        eb("p.displayName", "like", like),
+        eb("p.email", "like", like),
+        eb("p.mobilePhone", "like", like),
+        eb("c.country", "like", like),
+        eb("c.city", "like", like),
+        eb("c.organization", "like", like),
+        eb("c.ministryRole", "like", like)
       ]));
     }
     const totalRow = await q.select(sql<number>`COUNT(*)`.as("n")).executeTakeFirst();
     const rows = await q.select([
-      "p.id", "p.displayName", "p.firstName", "p.lastName", "p.email", "p.mobilePhone", "p.membershipStatus", "p.campusId", "p.mbidSub", "p.source", "p.photoUpdated", "p.dateAdded",
-      "c.country", "c.countryCode", "c.city", "c.timezone", "c.languages", "c.ministryRole", "c.organization", "c.contactConsent", "c.lastActiveAt", "c.mbidCreatedAt"
+      "p.id",
+      "p.displayName",
+      "p.firstName",
+      "p.lastName",
+      "p.email",
+      "p.mobilePhone",
+      "p.membershipStatus",
+      "p.campusId",
+      "p.mbidSub",
+      "p.source",
+      "p.photoUpdated",
+      "p.dateAdded",
+      "c.country",
+      "c.countryCode",
+      "c.city",
+      "c.timezone",
+      "c.languages",
+      "c.ministryRole",
+      "c.organization",
+      "c.contactConsent",
+      "c.lastActiveAt",
+      "c.mbidCreatedAt"
     ])
       .orderBy(sql`COALESCE(c.lastActiveAt, c.mbidCreatedAt, p.dateAdded)`, "desc")
-      .limit(Math.min(f.limit || 50, 500)).offset(f.offset || 0)
+      .limit(Math.min(f.limit || 50, 5000)).offset(f.offset || 0)
       .execute();
     return { rows, total: Number(totalRow?.n || 0) };
   }
@@ -258,7 +287,12 @@ export class CrmRepo {
     const row = r.rows[0] || {};
     const num = (v: any) => Number(v || 0);
     return {
-      total: num(row.total), withMbid: num(row.withMbid), contacts: num(row.contacts), members: num(row.members), consentYes: num(row.consentYes), newLast30: num(row.newLast30),
+      total: num(row.total),
+      withMbid: num(row.withMbid),
+      contacts: num(row.contacts),
+      members: num(row.members),
+      consentYes: num(row.consentYes),
+      newLast30: num(row.newLast30),
       countries: countries.rows.map((c: any) => ({ countryCode: c.countryCode, country: c.country, people: num(c.n) })),
       timezones: zones.rows.map((z: any) => ({ timezone: z.timezone, people: num(z.n) }))
     };

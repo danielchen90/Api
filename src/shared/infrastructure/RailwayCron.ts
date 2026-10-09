@@ -92,6 +92,22 @@ const runCrm = async (job: "keycloak" | "activity"): Promise<void> => {
   }
 };
 
+let crmEmailBusy = false;
+const runCrmEmails = async (): Promise<void> => {
+  if (crmEmailBusy) return;
+  crmEmailBusy = true;
+  try {
+    const repos = await RepoManager.getRepos<any>("membership");
+    const { CrmEventMailer } = await import("../../modules/membership/helpers/crm/CrmEventMailer.js");
+    const r = await CrmEventMailer.tick(repos);
+    if (r.sent || r.failed) console.warn("[crm] event emails", JSON.stringify(r));
+  } catch (e) {
+    console.error("[crm] event emails failed:", e);
+  } finally {
+    crmEmailBusy = false;
+  }
+};
+
 export const startRailwayCron = (): void => {
   if (!process.env.RAILWAY_ENVIRONMENT) return;
 
@@ -117,5 +133,7 @@ export const startRailwayCron = (): void => {
     setInterval(() => void safe("crm keycloak sync", () => runCrm("keycloak")), FIVE_MINUTES_MS);
     setTimeout(() => void safe("crm activity sync", () => runCrm("activity")), 3 * 60 * 1000);
     setInterval(() => void safe("crm activity sync", () => runCrm("activity")), THIRTY_MINUTES_MS);
+    // Event reminders / follow-ups / scheduled invitations: due ones go out within a minute.
+    setInterval(() => void runCrmEmails(), ONE_MINUTE_MS);
   }
 };

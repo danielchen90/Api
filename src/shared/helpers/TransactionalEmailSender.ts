@@ -120,6 +120,44 @@ export class TransactionalEmailSender {
     }));
   }
 
+  /**
+   * One email in the branded wrapper that reports instead of throwing, with an optional RFC 8058
+   * one-click unsubscribe (List-Unsubscribe + List-Unsubscribe-Post, as SesEmailDeliveryProvider
+   * sends for campaigns). Used by the CRM event emails (invitations, reminders, follow-ups).
+   */
+  static async sendListEmail(r: {
+    from: string; to: string; replyTo?: string; subject: string; contents: string; appName: string; appUrl: string; text?: string; listUnsubscribeUrl?: string;
+  }): Promise<{ success: boolean; error?: string; messageId?: string }> {
+    try {
+      const html = TransactionalEmailSender.TEMPLATE
+        .replace("{appLink}", "<a target='_blank' rel='noreferrer noopener' href=\"" + r.appUrl + "/\">" + r.appName + "</a>")
+        .replace("{contents}", r.contents);
+      const headers = r.listUnsubscribeUrl ? [
+        { Name: "List-Unsubscribe", Value: `<${r.listUnsubscribeUrl}>` },
+        { Name: "List-Unsubscribe-Post", Value: "List-Unsubscribe=One-Click" }
+      ] : [];
+      const out = await TransactionalEmailSender.client.send(new SendEmailCommand({
+        FromEmailAddress: r.from,
+        Destination: { ToAddresses: [r.to] },
+        ReplyToAddresses: r.replyTo ? [r.replyTo] : undefined,
+        ...(process.env.SES_CONFIGURATION_SET ? { ConfigurationSetName: process.env.SES_CONFIGURATION_SET } : {}),
+        Content: {
+          Simple: {
+            Subject: { Charset: "UTF-8", Data: r.subject },
+            Body: {
+              Html: { Charset: "UTF-8", Data: html },
+              Text: { Charset: "UTF-8", Data: r.text || TransactionalEmailSender.htmlToText(html) }
+            },
+            Headers: headers
+          }
+        }
+      }));
+      return { success: true, messageId: out.MessageId };
+    } catch (e: any) {
+      return { success: false, error: String(e?.name || e?.message || e).slice(0, 200) };
+    }
+  }
+
   // Cheap HTML→text fallback for the plain-text alternative part. Not a full
   // renderer — strips markup/entities and collapses whitespace, which is enough
   // for the short transactional bodies these emails carry.

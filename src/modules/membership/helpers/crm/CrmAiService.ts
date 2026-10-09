@@ -36,7 +36,9 @@ const EXTRACT_SCHEMA = {
     person: {
       type: "object",
       additionalProperties: false,
-      required: ["firstName", "lastName", "emails", "phones", "countryCode", "city", "region", "timezone", "languages", "ministryRole", "organization", "contactConsent"],
+      required: [
+        "firstName", "lastName", "emails", "phones", "countryCode", "city", "region", "timezone", "languages", "ministryRole", "organization", "contactConsent"
+      ],
       properties: {
         firstName: nullable("string"),
         lastName: nullable("string"),

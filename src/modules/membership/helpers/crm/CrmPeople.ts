@@ -41,7 +41,9 @@ export class CrmPeople {
     const list = [...new Set(emails.map(normEmail).filter(Boolean))];
     if (!list.length) return [];
     const rows = await (getDb() as any).selectFrom("people")
-      .select(["id", "mbidSub", "email", "membershipStatus", "userId", "firstName", "lastName", "mobilePhone"])
+      .select([
+        "id", "mbidSub", "email", "membershipStatus", "userId", "firstName", "lastName", "mobilePhone"
+      ])
       .where("churchId", "=", churchId)
       .where(sql<boolean>`LOWER(TRIM(email)) IN (${sql.join(list)})`)
       .where((eb: any) => eb.or([eb("removed", "=", false), eb("removed", "is", null)]))
