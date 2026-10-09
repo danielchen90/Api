@@ -219,7 +219,7 @@ export class CrmController extends MembershipBaseController {
     return crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key));
   }
 
-  /** Global Church: a signed-in person accepted What We Believe and joins (immediate membership). */
+  /** Global Church: a signed-in person accepted What We Believe and joins (immediate membership in the Global Church location). */
   @httpPost("/service/join")
   public async serviceJoin(req: express.Request, res: express.Response): Promise<any> {
     return this.actionWrapperAnon(req, res, async () => {

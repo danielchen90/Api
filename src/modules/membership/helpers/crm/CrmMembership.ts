@@ -7,7 +7,8 @@ import { CrmSyncService, countryName } from "./CrmSyncService.js";
 /**
  * Joining the Global Church (the "right hand of fellowship" online). The Global Church site calls
  * this after a signed-in person reads What We Believe and accepts. Membership is immediate
- * (decision 2026-10-08): the person becomes a Member of the Online Church center, the CRM records
+ * (decision 2026-10-08): the person becomes a Member of the Global Church location (its own
+ * location, not the Online Church, which is a separate congregation), the CRM records
  * when and which statement they accepted, and staff are told by the Global Church site.
  *
  * Status only ever moves up: Contact / Visitor / Guest / Regular Attendee / Inactive / none become
@@ -19,8 +20,8 @@ const UPGRADE = new Set(["", "contact", "visitor", "guest", "regular attendee", 
 export interface JoinInput { sub: string; email: string; firstName?: string | null; lastName?: string | null; lang?: string | null; countryCode?: string | null; phone?: string | null; beliefsVersion?: string | null }
 
 export class CrmMembership {
-  static async onlineCampusId(repos: Repos, churchId: string): Promise<string | null> {
-    const slug = process.env.CRM_ONLINE_CAMPUS_SLUG || "online-church";
+  static async globalChurchCampusId(repos: Repos, churchId: string): Promise<string | null> {
+    const slug = process.env.CRM_GLOBAL_CHURCH_CAMPUS_SLUG || "global-church";
     const hit = await repos.campus.loadBySlug(churchId, slug).catch(() => null);
     return hit?.campus?.id || null;
   }
@@ -41,8 +42,8 @@ export class CrmMembership {
     const upgraded = UPGRADE.has(current);
     const set: Record<string, any> = {};
     if (upgraded) set.membershipStatus = "Member";
-    const online = await CrmMembership.onlineCampusId(repos, churchId);
-    if (!person?.campusId && online) set.campusId = online;
+    const globalChurch = await CrmMembership.globalChurchCampusId(repos, churchId);
+    if (!person?.campusId && globalChurch) set.campusId = globalChurch;
     if (input.phone && !person?.mobilePhone) set.mobilePhone = String(input.phone).slice(0, 21);
     if (Object.keys(set).length) await (getDb() as any).updateTable("people").set(set).where("churchId", "=", churchId).where("id", "=", personId).execute();
 
