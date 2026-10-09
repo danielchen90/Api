@@ -73,6 +73,19 @@ export class MessageRepo {
       .execute();
   }
 
+  /**
+   * Remember a keyed hash of the sender's IP (chat safety). Separate from create() and
+   * never throws, so chat keeps working if the ipHash column has not been migrated yet.
+   */
+  public async setIpHash(churchId: string, id: string, ipHash: string | null) {
+    if (!ipHash) return;
+    try {
+      await getDb().updateTable("messages").set({ ipHash }).where("id", "=", id).where("churchId", "=", churchId).execute();
+    } catch (e) {
+      console.warn("[chat-safety] could not store message ipHash (migration applied?)", (e as any)?.message || e);
+    }
+  }
+
   public async delete(churchId: string, id: string) {
     await getDb().deleteFrom("messages").where("id", "=", id).where("churchId", "=", churchId).execute();
   }
@@ -87,7 +100,8 @@ export class MessageRepo {
       messageType: data.messageType,
       content: data.content,
       personId: data.personId,
-      timeUpdated: data.timeUpdated
+      timeUpdated: data.timeUpdated,
+      senderKey: data.ipHash || undefined
     };
   }
 

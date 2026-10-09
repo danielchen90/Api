@@ -88,6 +88,15 @@ export class ConversationController extends MessagingBaseController {
         }
       }
 
+      // Hide messages from people this member has blocked. Done after the empty-conversation
+      // pass so the conversation itself stays (the client must not start a second one).
+      const blocked = new Set(await this.repos.memberBlock.loadBlockedIds(churchId, au.personId));
+      if (blocked.size > 0) {
+        for (const conversation of conversations) {
+          conversation.messages = (conversation.messages || []).filter((m: Message) => !m.personId || !blocked.has(m.personId));
+        }
+      }
+
       return conversations;
     }) as any;
   }

@@ -10,6 +10,13 @@ export class PrivateMessageController extends MessagingBaseController {
   @httpPost("/")
   public async save(req: express.Request<{}, {}, PrivateMessage[]>, res: express.Response): Promise<unknown> {
     return this.actionWrapper(req, res, async (au) => {
+      // A member who blocked the sender does not get new private conversations from them.
+      for (const conv of req.body || []) {
+        const sender = au?.personId || conv?.fromPersonId;
+        if (conv?.toPersonId && sender && await this.repos.memberBlock.hasBlocked(au.churchId, conv.toPersonId, sender)) {
+          return this.json({ error: "blocked" }, 403);
+        }
+      }
       const promises: Promise<PrivateMessage>[] = [];
       req.body.forEach((conv) => {
         conv.churchId = au.churchId;
@@ -34,7 +41,10 @@ export class PrivateMessageController extends MessagingBaseController {
   @httpGet("/")
   public async getAll(req: express.Request<{}, {}, []>, res: express.Response): Promise<any> {
     return this.actionWrapper(req, res, async (au) => {
-      const privateMessages: PrivateMessage[] = await this.repos.privateMessage.loadByPersonId(au.churchId, au.personId);
+      const blocked = new Set(await this.repos.memberBlock.loadBlockedIds(au.churchId, au.personId));
+      // Conversations with people this member has blocked drop out of the inbox.
+      const privateMessages: PrivateMessage[] = (await this.repos.privateMessage.loadByPersonId(au.churchId, au.personId))
+        .filter((pm: PrivateMessage) => !blocked.has(pm.fromPersonId === au.personId ? pm.toPersonId : pm.fromPersonId));
       const messageIds: string[] = [];
       privateMessages.forEach((pm) => {
         if (pm.conversation && pm.conversation.lastPostId && messageIds.indexOf(pm.conversation.lastPostId) === -1) {

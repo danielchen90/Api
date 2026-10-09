@@ -1,4 +1,4 @@
-import type { BlockedIp, Connection, Conversation, DeliveryLog, Device, DeviceContent, EmailTemplate, Message, Notification, NotificationPreference, PrivateMessage, SentText, TextingProvider, EmailCampaign, CampaignRecipient, CampaignEvent, EmailSuppression, SavedAudience, ChurchEmailSettings } from "../models/index.js";
+import type { BlockedIp, Connection, Conversation, DeliveryLog, Device, DeviceContent, EmailTemplate, Message, Notification, NotificationPreference, PrivateMessage, SentText, TextingProvider, EmailCampaign, CampaignRecipient, CampaignEvent, EmailSuppression, SavedAudience, ChurchEmailSettings, MessageReport, MemberBlock } from "../models/index.js";
 
 export interface MessagingDatabase {
   blockedIps: BlockedIp;
@@ -20,4 +20,6 @@ export interface MessagingDatabase {
   emailSuppression: EmailSuppression;
   savedAudiences: SavedAudience;
   churchEmailSettings: ChurchEmailSettings;
+  messageReports: MessageReport;
+  memberBlocks: MemberBlock;
 }

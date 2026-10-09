@@ -19,3 +19,5 @@ export { CampaignStatsController } from "./CampaignStatsController.js";
 export { UnsubscribeController } from "./UnsubscribeController.js";
 export { SnsTrackingController } from "./SnsTrackingController.js";
 export { WebPushController } from "./WebPushController.js";
+export { MessageReportController } from "./MessageReportController.js";
+export { MemberBlockController } from "./MemberBlockController.js";

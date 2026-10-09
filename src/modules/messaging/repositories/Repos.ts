@@ -1,4 +1,4 @@
-import { BlockedIpRepo, ConnectionRepo, ConversationRepo, DeliveryLogRepo, DeviceRepo, DeviceContentRepo, EmailTemplateRepo, MessageRepo, NotificationRepo, NotificationPreferenceRepo, PrivateMessageRepo, TextingProviderRepo, SentTextRepo, EmailCampaignRepo, CampaignRecipientRepo, CampaignEventRepo, EmailSuppressionRepo, SavedAudienceRepo, ChurchEmailSettingsRepo } from "./index.js";
+import { BlockedIpRepo, ConnectionRepo, ConversationRepo, DeliveryLogRepo, DeviceRepo, DeviceContentRepo, EmailTemplateRepo, MessageRepo, NotificationRepo, NotificationPreferenceRepo, PrivateMessageRepo, TextingProviderRepo, SentTextRepo, EmailCampaignRepo, CampaignRecipientRepo, CampaignEventRepo, EmailSuppressionRepo, SavedAudienceRepo, ChurchEmailSettingsRepo, MessageReportRepo, MemberBlockRepo } from "./index.js";
 
 export class Repos {
   public blockedIp: BlockedIpRepo;
@@ -20,6 +20,8 @@ export class Repos {
   public emailSuppression: EmailSuppressionRepo;
   public savedAudience: SavedAudienceRepo;
   public churchEmailSettings: ChurchEmailSettingsRepo;
+  public messageReport: MessageReportRepo;
+  public memberBlock: MemberBlockRepo;
 
   public static getCurrent = () => new Repos();
 
@@ -43,5 +45,7 @@ export class Repos {
     this.emailSuppression = new EmailSuppressionRepo();
     this.savedAudience = new SavedAudienceRepo();
     this.churchEmailSettings = new ChurchEmailSettingsRepo();
+    this.messageReport = new MessageReportRepo();
+    this.memberBlock = new MemberBlockRepo();
   }
 }
