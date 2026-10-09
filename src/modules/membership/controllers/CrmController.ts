@@ -10,6 +10,8 @@ import { CrmAiService, CrmAiError } from "../helpers/crm/CrmAiService.js";
 import { CrmSyncService } from "../helpers/crm/CrmSyncService.js";
 import { CrmActivitySync } from "../helpers/crm/CrmActivitySync.js";
 import { CrmConfig } from "../helpers/crm/CrmConfig.js";
+import { CrmMembership } from "../helpers/crm/CrmMembership.js";
+import crypto from "crypto";
 
 /**
  * The ministry-wide CRM (/membership/crm).
@@ -206,6 +208,38 @@ export class CrmController extends MembershipBaseController {
       if (what === "all" || what === "keycloak") out.keycloak = await new CrmSyncService(this.repos).run();
       if (what === "all" || what === "activity") out.activity = await new CrmActivitySync(this.repos).run();
       return out;
+    });
+  }
+
+  // ── service calls from the other Mary Banks sites (shared secret CRM_SERVICE_KEY) ──
+  private serviceAllowed(req: express.Request): boolean {
+    const key = CrmConfig.serviceKey;
+    const given = String(req.headers["x-crm-key"] || "");
+    if (!key || given.length !== key.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key));
+  }
+
+  /** Global Church: a signed-in person accepted What We Believe and joins (immediate membership). */
+  @httpPost("/service/join")
+  public async serviceJoin(req: express.Request, res: express.Response): Promise<any> {
+    return this.actionWrapperAnon(req, res, async () => {
+      if (!this.serviceAllowed(req)) return this.json({ error: "forbidden" }, 401);
+      const b = (req.body || {}) as any;
+      try {
+        return await CrmMembership.join(this.repos, {
+          sub: String(b.sub || ""),
+          email: String(b.email || ""),
+          firstName: b.firstName,
+          lastName: b.lastName,
+          lang: b.lang,
+          countryCode: b.countryCode,
+          phone: b.phone,
+          beliefsVersion: b.beliefsVersion
+        });
+      } catch (e: any) {
+        if (e?.status) return this.json({ error: e.message }, e.status);
+        throw e;
+      }
     });
   }
 }
