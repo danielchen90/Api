@@ -27,8 +27,8 @@ type Row = { sub?: string | null; email?: string | null; name?: string | null; a
 type Source = { name: string; env: string; query: (db: pg.Pool, since: Date) => Promise<Row[]> };
 
 const OVERLAP_MS = 10 * 60_000;
-const LIBRARY = process.env.CRM_LIBRARY_URL || "https://new.mbfaithlibrary.com";
-const THEATER = process.env.CRM_THEATER_URL || "https://theater.mbmonline.global";
+const LIBRARY = process.env.CRM_LIBRARY_URL || "https://library.marybanks.net";
+const THEATER = process.env.CRM_THEATER_URL || "https://theater.marybanks.net";
 const pct = (n: any) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
 
 const SOURCES: Source[] = [

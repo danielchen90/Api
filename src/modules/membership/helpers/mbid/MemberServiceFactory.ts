@@ -23,7 +23,7 @@ export function buildMemberAccountService(repos: Repos, ip = ""): MemberAccountS
         console.log(EmailCodeHelper.bodyText(code));
         return;
       }
-      const siteUrl = process.env.PUBLIC_SITE_URL || "https://church.chensolutions.com";
+      const siteUrl = process.env.PUBLIC_SITE_URL || "https://churches.marybanks.net";
       await TransactionalEmailSender.sendTemplatedEmail(Environment.supportEmail, email, "Bible Teachers International", siteUrl, EmailCodeHelper.subject, EmailCodeHelper.bodyHtml(code));
     },
     audit: (churchId, userId, category, action, entityType, entityId, details) =>

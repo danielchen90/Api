@@ -29,8 +29,10 @@ const clip = (v: any, n: number) => (v === null || v === undefined ? null : Stri
 const validTz = (tz: string) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } };
 const slugify = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "event";
 
-export const publicSiteUrl = () => (process.env.PUBLIC_SITE_URL || "https://church.chensolutions.com").replace(/\/+$/, "");
-export const eventUrl = (slug: string) => `${publicSiteUrl()}/e/${slug}`;
+export const publicSiteUrl = () => (process.env.PUBLIC_SITE_URL || "https://churches.marybanks.net").replace(/\/+$/, "");
+// Public event pages (/e/<slug>) have their own address: the same church site, served on events.marybanks.net.
+export const eventsSiteUrl = () => (process.env.EVENTS_SITE_URL || "https://events.marybanks.net").replace(/\/+$/, "");
+export const eventUrl = (slug: string) => `${eventsSiteUrl()}/e/${slug}`;
 
 export class EventError extends Error {
   constructor(public status: number, public code: string) { super(code); }

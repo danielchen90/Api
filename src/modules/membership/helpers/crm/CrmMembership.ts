@@ -67,7 +67,7 @@ export class CrmMembership {
         refKey: "membership",
         title: "Joined the Global Church",
         detail: `Accepted What We Believe${input.beliefsVersion ? " (" + input.beliefsVersion + ")" : ""}${input.lang && input.lang !== "en" ? ", in " + input.lang : ""}`,
-        url: (process.env.GLOBAL_CHURCH_URL || "https://globalchurch.mbmonline.global"),
+        url: (process.env.GLOBAL_CHURCH_URL || "https://globalchurch.marybanks.net"),
         occurredAt: new Date()
       }
     ]);
