@@ -73,7 +73,7 @@ import { UserController } from "../../controllers/UserController.js";
 import { MeController } from "../../controllers/MeController.js";
 import { MbidTokenVerifier } from "../mbid/MbidTokenVerifier.js";
 
-const ISS = "https://id.mbmonline.global/realms/marybanks";
+const ISS = "https://id.marybanks.net/realms/marybanks";
 const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const jwk = { ...(publicKey.export({ format: "jwk" }) as any), kid: "k1", use: "sig" };
 const idToken = (over: any = {}) => jwt.sign(

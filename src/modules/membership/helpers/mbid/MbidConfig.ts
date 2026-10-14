@@ -2,7 +2,7 @@
  * Mary Banks ID (Keycloak) settings for the Api, read from the environment on each use so a
  * restart is the only thing needed after changing them.
  *
- *   KEYCLOAK_BASE_URL               https://id.mbmonline.global
+ *   KEYCLOAK_BASE_URL               https://id.marybanks.net
  *   KEYCLOAK_REALM                  marybanks
  *   KEYCLOAK_SERVICE_CLIENT_ID      service client (client credentials; realm-management
  *   KEYCLOAK_SERVICE_CLIENT_SECRET  manage-users / view-users / query-users)
@@ -14,7 +14,7 @@
  */
 export class MbidConfig {
   static get baseUrl(): string {
-    return (process.env.KEYCLOAK_BASE_URL || "https://id.mbmonline.global").replace(/\/+$/, "");
+    return (process.env.KEYCLOAK_BASE_URL || "https://id.marybanks.net").replace(/\/+$/, "");
   }
 
   static get realm(): string {

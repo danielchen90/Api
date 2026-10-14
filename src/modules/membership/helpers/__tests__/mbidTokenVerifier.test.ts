@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import { MbidTokenVerifier, MbidTokenError } from "../mbid/MbidTokenVerifier.js";
 import { MbidConfig } from "../mbid/MbidConfig.js";
 
-const ISS = "https://id.mbmonline.global/realms/marybanks";
+const ISS = "https://id.marybanks.net/realms/marybanks";
 const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const other = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const jwk = { ...(publicKey.export({ format: "jwk" }) as any), kid: "kid-1", use: "sig", alg: "RS256" };
