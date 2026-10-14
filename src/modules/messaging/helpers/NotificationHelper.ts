@@ -1146,7 +1146,7 @@ export class NotificationHelper {
     let emailSuccess = true;
     let emailError: string | undefined;
     try {
-      await EmailHelper.sendTemplatedEmail("support@churchapps.org", email, "Huro", "https://admin.huro.church", title, content, "ChurchEmailTemplate.html", replyTo);
+      await EmailHelper.sendTemplatedEmail("support@churchapps.org", email, "Huro", "https://admin.marybanks.net", title, content, "ChurchEmailTemplate.html", replyTo);
       console.log("[NotificationHelper.sendEmailNotification] Email sent successfully to " + email);
     } catch (error) {
       emailSuccess = false;
